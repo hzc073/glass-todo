@@ -328,7 +328,6 @@ class TodoApp {
         if (this.view === 'recycle') {
             this.renderRecycle(deletedTasks);
         }
-        this.renderRecycle(deletedTasks, 'recycle-list-mobile');
     }
 
     // --- 辅助逻辑 ---

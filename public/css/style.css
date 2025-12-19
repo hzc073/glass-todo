@@ -21,6 +21,8 @@ body {
 .btn-danger { background: var(--danger); }
 .btn-secondary { background: rgba(0,0,0,0.1); color: #333; }
 .btn-text { background: transparent; color: var(--primary); border: none; cursor: pointer; padding: 0; }
+.btn-icon { background: rgba(0,0,0,0.05); border: none; cursor: pointer; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 1rem; }
+.btn-icon:active { transform: scale(0.96); }
 
 /* 布局 */
 #sidebar { width: 240px; background: var(--glass-sidebar); backdrop-filter: var(--blur); padding: 20px 10px; display: flex; flex-direction: column; gap: 5px; color: var(--text-light); z-index: 100; border-right: var(--glass-border); }
@@ -29,6 +31,7 @@ body {
 .nav-item .tag-more { flex-shrink: 0; }
 #main { flex: 1; background: var(--glass-bg); backdrop-filter: var(--blur); display: flex; flex-direction: column; overflow: hidden; position: relative; }
 #mobile-tabbar { display: none; position: fixed; bottom: 0; left: 0; right: 0; height: var(--tab-height); background: rgba(255,255,255,0.9); border-top: 1px solid #eee; justify-content: space-around; align-items: center; z-index: 900; }
+#mobile-tabbar .tab-item[data-view="recycle"] { display: none; }
 
 /* 导航与工具栏 */
 .toolbar { height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 25px; background: rgba(255,255,255,0.2); border-bottom: var(--glass-border); flex-shrink: 0; }
@@ -40,6 +43,7 @@ body {
 .nav-item { padding: 10px 15px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: 0.2s; opacity: 0.8; font-weight: 500; font-size: 0.9rem; color: rgba(255,255,255,0.9); }
 .nav-item:hover { background: rgba(255,255,255,0.15); opacity: 1; }
 .nav-item.active { background: var(--primary); color: white; opacity: 1; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); }
+#sidebar .nav-item[data-view="recycle"] { display: none; }
 .tag-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warning); margin-right: 5px; }
 
 /* 视图切换器 */
