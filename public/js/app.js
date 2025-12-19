@@ -32,6 +32,7 @@ class TodoApp {
         this.longPressTimer = null;
         this.undoState = null;
         this.undoTimer = null;
+        this.isLoggingOut = false;
 
         this.holidaysByYear = {};
         this.holidayLoading = {};
@@ -94,6 +95,7 @@ class TodoApp {
             const result = await api.login(u, p, invite);
             if(result.success) {
                 this.isAdmin = result.isAdmin;
+                this.isLoggingOut = false;
                 document.getElementById('login-modal').style.display = 'none';
                 document.getElementById('current-user').innerText = u;
                 this.loadData();
@@ -105,7 +107,19 @@ class TodoApp {
             }
         } catch(e) { console.error(e); alert("网络错误"); }
     }
-    logout() { api.clearAuth(); location.reload(); }
+    logout() { this.handleUnauthorized(true); }
+    handleUnauthorized(fromLogout = false) {
+        if (this.isLoggingOut) return;
+        this.isLoggingOut = true;
+        api.clearAuth();
+        this.isAdmin = false;
+        const adminBtn = document.getElementById('admin-btn');
+        if (adminBtn) adminBtn.style.display = 'none';
+        const loginModal = document.getElementById('login-modal');
+        if (loginModal) loginModal.style.display = 'flex';
+        if (fromLogout) this.showToast('已退出登录');
+        setTimeout(() => { this.isLoggingOut = false; }, 300);
+    }
     openAdminPanel() { this.admin.open(); }
     adminRefreshCode() { this.admin.refreshCode(); }
     adminResetPwd(u) { this.admin.resetPwd(u); }
@@ -133,6 +147,7 @@ class TodoApp {
 
     // --- 数据逻辑 ---
     async loadData() {
+        if (!api.auth && !api.isLocalMode()) return;
         try {
             const json = await api.loadData();
             const newData = json.data || [];

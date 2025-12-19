@@ -71,7 +71,11 @@ const api = {
 
         const res = await fetch(this.buildUrl(url), opts);
         if (res.status === 401) {
-            window.app.logout();
+            if (window.app && typeof window.app.handleUnauthorized === 'function') {
+                window.app.handleUnauthorized();
+            } else {
+                this.clearAuth();
+            }
             throw new Error('Unauthorized');
         }
         return res;
