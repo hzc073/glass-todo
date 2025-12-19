@@ -773,8 +773,9 @@ class TodoApp {
             const dayDone = tasks.filter(t => t.date === dStr && t.status === 'completed').length;
             weekData.push({ day: ['一','二','三','四','五','六','日'][i], count: dayDone });
         }
-        
-        const maxVal = Math.max(...weekData.map(d=>d.count), 1);
+
+        const weekTotal = tasks.filter(t => t.date >= this.formatDate(startOfWeek) && t.date <= this.formatDate(endOfWeek)).length;
+        const maxVal = Math.max(weekTotal, 1);
         const barsHtml = weekData.map(d => `
             <div style="flex:1; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:flex-end;">
                 <div style="width:20px; height:${Math.max(4, (d.count/maxVal)*100)}%; background:var(--primary); border-radius:4px 4px 0 0; opacity:0.8;"></div>
