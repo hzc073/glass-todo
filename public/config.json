@@ -1,5 +1,5 @@
 {
   "apiBaseUrl": "https://glass-todo-d1.759737361.workers.dev",
-  "useLocalStorage": false,
+  "useLocalStorage": true,
   "appTitle": "Glass Todo"
 }
