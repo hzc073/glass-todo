@@ -32,11 +32,11 @@ Glass Todo 使用指南
 - 已安装 Node.js 环境
 
 ### 一、准备工作
-[ ] 注册 Cloudflare 账号
-[ ] 注册 GitHub 账号
-[ ] Fork 本项目代码到你的 GitHub 仓库
-[ ] 本地安装 Node.js 环境
-[ ] 将 Fork 后的代码 Clone 到本地
+* [ ] 注册 Cloudflare 账号
+* [ ] 注册 GitHub 账号
+* [ ] Fork 本项目代码到你的 GitHub 仓库
+* [ ] 本地安装 Node.js 环境
+* [ ] 将 Fork 后的代码 Clone 到本地
 
 ### 二、部署步骤
 

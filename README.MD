@@ -1,7 +1,6 @@
-# Glass Todo · Local
-
+# Glass Todo 
 > 一个运行在你自己电脑里的 Todo / 日程工具  
-> 支持局域网访问，多用户，数据不出网
+> 支持windows，docker,cloudflare部署。
 
 ---
 
@@ -45,7 +44,4 @@ https://demo.gemmm.top
 
 👉 详细部署说明请查看 `docs/index.md`
 
----
 
-> 这不是一个“云任务服务”，  
-> 它只是一个属于你自己的 Todo。
