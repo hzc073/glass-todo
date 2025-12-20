@@ -68,7 +68,6 @@
         <div class="nav-item active" data-view="tasks" onclick="app.switchView('tasks')"><span>📝</span> 任务列表</div>
         <div class="nav-item" data-view="calendar" onclick="app.switchView('calendar')"><span>📅</span> 日历视图</div>
         <div class="nav-item" data-view="matrix" onclick="app.switchView('matrix')"><span>💠</span> 四象限</div>
-        <div class="nav-item" data-view="inbox" onclick="app.switchView('inbox')"><span>📥</span> 待办箱</div>
         
         <div class="nav-section">标签筛选</div>
         <div id="tag-filter-list"></div>
@@ -147,11 +146,6 @@
         </div>
 
         <!-- 视图: 待办箱（无日期任务） -->
-        <div id="view-inbox" class="view-container">
-            <h4 style="margin-bottom:10px">待办箱（无日期/时间）</h4>
-            <div id="list-inbox"></div>
-        </div>
-
         <!-- 视图: 日历 (增强版) -->
         <div id="view-calendar" class="view-container">
             <!-- 修复 Problem 2: 增加 align-items: center 解决错位 -->
@@ -254,10 +248,6 @@
                 <div class="settings-toggle" data-key="matrix">
                     <span>四象限</span>
                     <div class="toggle-switch" id="switch-view-matrix"></div>
-                </div>
-                <div class="settings-toggle" data-key="inbox">
-                    <span>待办箱</span>
-                    <div class="toggle-switch" id="switch-view-inbox"></div>
                 </div>
                 <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
                 <button class="btn btn-secondary" onclick="app.openExportModal()" style="width:100%; margin-bottom:10px;">📤 导出报告</button>

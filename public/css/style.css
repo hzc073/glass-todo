@@ -118,9 +118,6 @@ body {
 .task-group-count { background: rgba(0,0,0,0.08); border-radius: 999px; padding: 1px 6px; font-size: 0.7rem; color: #444; }
 .task-empty { opacity: 0.6; font-size: 0.85rem; padding: 6px 2px; }
 
-/* 待办箱固定区域 */
-#view-inbox { display: flex; flex-direction: column; overflow: hidden; }
-#list-inbox { flex: 1; overflow-y: auto; padding-right: 4px; min-height: 0; }
 
 /* 时间轴 (日视图) */
 .timeline-wrapper { position: relative; height: 1440px; margin-top: 10px; }
@@ -272,7 +269,6 @@ body {
     .week-header { width: 70px; border-bottom: none; border-right: 1px solid rgba(0,0,0,0.05); display: flex; flex-direction: column; justify-content: center; }
     #selection-bar { bottom: 90px; }
     .mobile-only { display: block; }
-    #mobile-tabbar .tab-item[data-view="inbox"],
     #mobile-tabbar .tab-item[data-view="recycle"] { display: none; }
 }
 

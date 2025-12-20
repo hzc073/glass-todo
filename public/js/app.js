@@ -38,8 +38,7 @@ class TodoApp {
         this.holidayLoading = {};
         this.viewSettings = JSON.parse(localStorage.getItem('glass_view_settings')) || {
             calendar: true,
-            matrix: true,
-            inbox: true
+            matrix: true
         };
 
         // 模块初始化
@@ -228,18 +227,16 @@ class TodoApp {
     isViewEnabled(v) {
         if (v === 'calendar') return !!this.viewSettings.calendar;
         if (v === 'matrix') return !!this.viewSettings.matrix;
-        if (v === 'inbox') return !!this.viewSettings.inbox;
+        if (v === 'inbox') return false;
         return true;
     }
     applyViewSettings() {
-        const map = { calendar: this.viewSettings.calendar, matrix: this.viewSettings.matrix, inbox: this.viewSettings.inbox };
+        const map = { calendar: this.viewSettings.calendar, matrix: this.viewSettings.matrix };
         Object.keys(map).forEach(key => {
             const visible = !!map[key];
             document.querySelectorAll(`#sidebar .nav-item[data-view="${key}"], #mobile-tabbar .tab-item[data-view="${key}"]`)
                 .forEach(el => { el.style.display = visible ? '' : 'none'; });
         });
-        const mobileInboxSection = document.getElementById('mobile-inbox-section');
-        if (mobileInboxSection) mobileInboxSection.style.display = 'none';
         if (!this.isViewEnabled(this.view)) this.switchView('tasks');
     }
     initViewSettingsControls() {
@@ -249,7 +246,7 @@ class TodoApp {
         this.syncViewSettingUI();
     }
     toggleViewSetting(key) {
-        if (!['calendar', 'matrix', 'inbox'].includes(key)) return;
+        if (!['calendar', 'matrix'].includes(key)) return;
         this.viewSettings[key] = !this.viewSettings[key];
         localStorage.setItem('glass_view_settings', JSON.stringify(this.viewSettings));
         this.syncViewSettingUI();
@@ -258,8 +255,7 @@ class TodoApp {
     syncViewSettingUI() {
         const mapping = {
             calendar: 'switch-view-calendar',
-            matrix: 'switch-view-matrix',
-            inbox: 'switch-view-inbox'
+            matrix: 'switch-view-matrix'
         };
         Object.entries(mapping).forEach(([key, id]) => {
             const el = document.getElementById(id);
@@ -328,7 +324,6 @@ class TodoApp {
             if (inboxCountEl) inboxCountEl.innerText = `${inboxTasks.length}`;
             this.renderInboxList(inboxTasks, 'list-inbox-desktop');
         }
-        this.renderInboxList(inboxTasks, 'list-inbox');
         const mobileBox = document.getElementById('list-inbox-mobile');
         if (mobileBox) mobileBox.innerHTML = '';
         if (this.view === 'matrix') {
@@ -711,7 +706,7 @@ class TodoApp {
     handleCardPress(e, id) {
         if (this.isSelectionMode) return;
         // 仅在任务列表或待办箱支持长按进入多选
-        if (this.view !== 'tasks' && this.view !== 'inbox') return;
+        if (this.view !== 'tasks') return;
         this.longPressTimer = setTimeout(() => { this.enterSelectionMode(id); this.longPressTimer = null; }, 500);
     }
     handleCardRelease() { if (this.longPressTimer) { clearTimeout(this.longPressTimer); this.longPressTimer = null; } }
