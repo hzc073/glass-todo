@@ -1,5 +1,4 @@
-# Glass Todo · Local
-
+# Glass Todo 
 > 一个运行在你自己电脑里的 Todo / 日程工具  
 > 支持局域网访问，多用户，数据不出网
 
