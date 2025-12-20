@@ -87,13 +87,30 @@ body {
 .tag-more:hover { background: rgba(0,0,0,0.08); }
 
 /* 任务列表分区布局 */
-#view-tasks { overflow: hidden; display: flex; flex-direction: column; gap: 16px; }
-.task-board { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 16px; min-height: 0; flex: 1; }
-.task-column { background: rgba(255,255,255,0.6); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; min-height: 0; border: 1px solid rgba(255,255,255,0.6); }
+#view-tasks { overflow: hidden; display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; }
+.task-board {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 16px;
+    min-height: 0;
+    flex: 1;
+    height: 100%;
+    align-items: stretch;
+}
+.task-column {
+    background: rgba(255,255,255,0.6);
+    border-radius: 16px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    border: 1px solid rgba(255,255,255,0.6);
+}
 .task-column-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .task-column-header.dim { opacity: 0.7; }
 .task-count { font-size: 0.8rem; color: #666; }
-.task-section { overflow-y: auto; padding-right: 4px; min-height: 0; }
+.task-section { overflow-y: auto; padding-right: 4px; min-height: 0; flex: 1; }
 .task-section::-webkit-scrollbar { width: 6px; }
 .task-section::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 6px; }
 .task-group { padding: 6px 0 4px; }
@@ -246,8 +263,8 @@ body {
     .search-bar:focus-within { width: auto; }
     .matrix-grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); gap: 10px; }
     .desktop-only { display: none !important; }
-    #view-tasks { overflow-y: auto; }
-    .task-board { grid-template-columns: 1fr; grid-template-rows: auto auto; }
+    #view-tasks { overflow-y: auto; height: auto; }
+    .task-board { display: block; height: auto; }
     .task-column { min-height: 200px; }
     /* 移动端周视图优化 */
     .week-grid { flex-direction: column; height: auto; overflow: visible; padding-bottom: 80px; }

@@ -387,7 +387,7 @@ class TodoApp {
             },
             {
                 key: 'next7',
-                title: '未来7天',
+                title: '最近7天',
                 items: list.filter(t => {
                     const stamp = this.getDateStamp(t.date);
                     return stamp !== null && stamp > todayStamp && stamp <= next7Stamp;
