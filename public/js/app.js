@@ -1292,7 +1292,7 @@ class TodoApp {
         if (this.undoState?.toastEl) this.undoState.toastEl.remove();
         const toastEl = this.showUndoToast(msg);
         this.undoState = { snapshot, toastEl };
-        this.undoTimer = setTimeout(() => this.clearUndo(), 10000);
+        this.undoTimer = setTimeout(() => this.clearUndo(), 2000);
     }
     clearUndo() {
         if (this.undoTimer) clearTimeout(this.undoTimer);
