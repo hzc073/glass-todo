@@ -239,7 +239,7 @@ class TodoApp {
                 .forEach(el => { el.style.display = visible ? '' : 'none'; });
         });
         const mobileInboxSection = document.getElementById('mobile-inbox-section');
-        if (mobileInboxSection) mobileInboxSection.style.display = this.viewSettings.inbox ? '' : 'none';
+        if (mobileInboxSection) mobileInboxSection.style.display = 'none';
         if (!this.isViewEnabled(this.view)) this.switchView('tasks');
     }
     initViewSettingsControls() {
@@ -329,12 +329,8 @@ class TodoApp {
             this.renderInboxList(inboxTasks, 'list-inbox-desktop');
         }
         this.renderInboxList(inboxTasks, 'list-inbox');
-        if (this.viewSettings.inbox) {
-            this.renderInboxList(inboxTasks, 'list-inbox-mobile');
-        } else {
-            const mobileBox = document.getElementById('list-inbox-mobile');
-            if (mobileBox) mobileBox.innerHTML = '';
-        }
+        const mobileBox = document.getElementById('list-inbox-mobile');
+        if (mobileBox) mobileBox.innerHTML = '';
         if (this.view === 'matrix') {
             ['q1','q2','q3','q4'].forEach(q => {
                 document.querySelector('#'+q+' .q-list').innerHTML = datedTasks.filter(t => t.status !== 'completed' && t.quadrant === q).map(t => this.createCardHtml(t)).join('');
