@@ -476,8 +476,8 @@ class TodoApp {
         let subHtml = '';
         if(t.subtasks && t.subtasks.length > 0 && !this.isSelectionMode) {
             const subRows = t.subtasks.map((sub, idx) => `
-                <div class="card-subtask-item" onclick="event.stopPropagation(); ${isInbox ? '' : `app.toggleSubtask(${t.id}, ${idx})`}">
-                    <div class="sub-checkbox ${sub.completed?'checked':''} ${isInbox ? 'disabled' : ''}"></div>
+                <div class="card-subtask-item" onclick="event.stopPropagation(); ${isInbox ? `app.showToast('待办箱任务不可完成');` : `app.toggleSubtask(${t.id}, ${idx})`}">
+                    <div class="sub-checkbox ${sub.completed?'checked':''} ${isInbox ? 'disabled' : ''}" ${isInbox ? 'title="待办箱任务不可完成"' : ''}></div>
                     <span style="${sub.completed?'text-decoration:line-through;opacity:0.6':''}">${sub.title}</span>
                 </div>
             `).join('');
@@ -496,7 +496,7 @@ class TodoApp {
                  ontouchmove="app.handleCardMove(event)"
                  ontouchend="app.handleCardRelease()" 
                  onclick="${clickHandler}">
-                <div class="checkbox ${t.status==='completed'?'checked':''} ${isInbox ? 'disabled' : ''}" ${isInbox ? 'title="待办箱任务不可完成"' : ''} onclick="event.stopPropagation();${isInbox ? '' : `app.toggleTask(${t.id})`}"></div>
+                <div class="checkbox ${t.status==='completed'?'checked':''} ${isInbox ? 'disabled' : ''}" ${isInbox ? 'title="待办箱任务不可完成"' : ''} onclick="event.stopPropagation();${isInbox ? `app.showToast('待办箱任务不可完成');` : `app.toggleTask(${t.id})`}"></div>
                 <div style="flex:1">
                     <div class="task-title">${t.title}</div>
                     <div style="font-size:0.75rem; color:#666; margin-top:2px;">📅 ${dateText}</div>

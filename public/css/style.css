@@ -76,12 +76,12 @@ body {
 .sub-checkbox { width: 14px; height: 14px; border: 1.5px solid #bbb; border-radius: 3px; display: flex; align-items: center; justify-content: center; background: white; flex-shrink: 0; transition: 0.2s; }
 .sub-checkbox.checked { background: var(--success); border-color: var(--success); }
 .sub-checkbox.checked::after { content: '✓'; color: white; font-size: 9px; font-weight: bold; }
-.sub-checkbox.disabled { cursor: not-allowed; opacity: 0.5; pointer-events: none; }
+.sub-checkbox.disabled { cursor: not-allowed; opacity: 0.5; }
 
 /* Checkbox & Tag */
 .checkbox { width: 18px; height: 18px; border: 2px solid #aaa; border-radius: 5px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; background: white; transition: 0.2s; }
 .checkbox:hover { border-color: var(--primary); }
-.checkbox.disabled { cursor: not-allowed; opacity: 0.5; pointer-events: none; }
+.checkbox.disabled { cursor: not-allowed; opacity: 0.5; }
 .checkbox.checked { background: var(--success); border-color: var(--success); }
 .checkbox.checked::after { content: '✓'; color: white; font-size: 12px; font-weight: bold; }
 .tag-pill { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background: rgba(0,122,255,0.1); color: var(--primary); }
