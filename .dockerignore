@@ -1,0 +1,15 @@
+node_modules
+database.sqlite
+.git
+.env
+.env.*
+data
+holidays
+bin
+img
+docs
+cf
+scripts
+*.bat
+
+

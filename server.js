@@ -8,10 +8,18 @@ const db = require('./server/db');
 const { authenticate, requireAdmin, getOrInitInviteCode, generateInviteCode } = require('./server/auth');
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(cors());
 app.use(bodyParser.json());
+app.get('/config.json', (req, res) => {
+    res.json({
+        apiBaseUrl: process.env.API_BASE_URL || '',
+        useLocalStorage: String(process.env.USE_LOCAL_STORAGE || '').toLowerCase() === 'true',
+        holidayJsonUrl: process.env.HOLIDAY_JSON_URL || '',
+        appTitle: process.env.APP_TITLE || 'Glass Todo'
+    });
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 const holidaysDir = path.join(__dirname, 'public', 'holidays');
@@ -105,7 +113,8 @@ app.get('/api/holidays/:year', authenticate, (req, res) => {
         return res.sendFile(filePath);
     }
 
-    const url = `https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/${year}.json`;
+    const base = process.env.HOLIDAY_JSON_URL || 'https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/{year}.json';
+    const url = base.includes('{year}') ? base.replace('{year}', year) : base;
     https.get(url, (resp) => {
         if (resp.statusCode !== 200) {
             resp.resume();

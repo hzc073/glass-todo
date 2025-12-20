@@ -1,0 +1,11 @@
+version: "3.8"
+services:
+  glass-todo:
+    build: .
+    ports:
+      - "13000:3000"
+    env_file:
+      - .env
+    volumes:
+      - /volume1/docker/glass_todo/data:/data
+      - /volume1/docker/glass_todo/holidays:/app/public/holidays

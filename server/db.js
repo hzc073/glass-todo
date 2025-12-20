@@ -2,7 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const crypto = require('crypto');
 
-const dbFile = path.join(__dirname, '../database.sqlite');
+const dbFile = process.env.DB_PATH || path.join(__dirname, '../database.sqlite');
 const db = new sqlite3.Database(dbFile);
 
 // 初始化数据库表结构
