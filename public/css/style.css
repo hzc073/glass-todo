@@ -233,6 +233,7 @@ body {
 .settings-toggle { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
 .settings-label { display: inline-flex; align-items: center; gap: 6px; }
 .settings-toggle .help-icon { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); color: #666; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; cursor: help; margin-left: 6px; }
+.help-icon { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); color: #666; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; cursor: help; }
 .mobile-only { display: none; }
 
 /* Modal */
