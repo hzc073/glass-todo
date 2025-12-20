@@ -202,7 +202,9 @@ export default class CalendarView {
             const isToday = dStr === this.app.formatDate(new Date());
             const lunarText = this.settings.showLunar ? this.app.getLunarText(d) : '';
             const holiday = this.settings.showHoliday ? this.app.getHolidayForDate(dStr) : null;
-            const holidayHtml = holiday ? `<div class="holiday-tag ${holiday.isOffDay ? 'off' : 'work'}">${holiday.name}${holiday.isOffDay ? '' : '·班'}</div>` : '';
+            const holidayHtml = holiday
+                ? `<div class="holiday-tag ${holiday.isOffDay ? 'off' : 'work'}">${holiday.name}${holiday.isOffDay ? '' : '·班'}</div>`
+                : `<div class="holiday-tag placeholder"></div>`;
             
             const col = document.createElement('div');
             col.className = 'week-col';

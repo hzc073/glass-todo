@@ -56,6 +56,8 @@ body {
 .holiday-tag { font-size: 0.7rem; padding: 1px 5px; border-radius: 6px; background: rgba(0,0,0,0.06); color: #333; display: inline-block; }
 .holiday-tag.off { background: rgba(52,199,89,0.18); color: var(--success); }
 .holiday-tag.work { background: rgba(255,59,48,0.18); color: var(--danger); }
+.holiday-tag.placeholder { background: transparent; color: transparent; }
+.week-header .holiday-tag { display: block; height: 16px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .month-cell .holiday-tag { display: block; height: 16px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .view-container { flex: 1; overflow-y: auto; padding: 20px; display: none; }
