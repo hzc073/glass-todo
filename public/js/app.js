@@ -358,7 +358,7 @@ class TodoApp {
             this.calendar.render(); // 委托 Calendar 模块渲染
         }
         if (this.view === 'stats') {
-             this.renderStats(datedTasks);
+             this.renderStats(allTasks);
         }
         if (this.view === 'recycle') {
             this.renderRecycle(deletedTasks);
@@ -683,6 +683,16 @@ class TodoApp {
             if (subtasks.every(s => s.completed)) status = 'completed';
             else if (status === 'completed') status = 'todo';
         }
+        const nowStr = this.formatDate(new Date());
+        const prevItem = this.currentTaskId ? this.data.find(i => i.id == this.currentTaskId) : null;
+        let completedAt = null;
+        if (status === 'completed') {
+            completedAt = prevItem?.completedAt || nowStr;
+        } else if (prevItem?.status === 'completed' && status !== 'completed') {
+            completedAt = null;
+        } else if (prevItem?.completedAt) {
+            completedAt = prevItem.completedAt;
+        }
 
         const newItem = {
             id: this.currentTaskId || Date.now(),
@@ -694,6 +704,7 @@ class TodoApp {
             tags: document.getElementById('task-tags').value.split(/[,，]/).map(t => t.trim()).filter(t => t),
             subtasks, status,
             inbox: isInbox,
+            completedAt,
             deletedAt: this.currentTaskId ? (this.data.find(i=>i.id==this.currentTaskId)?.deletedAt || null) : null
         };
 
@@ -846,7 +857,9 @@ class TodoApp {
                 return;
             }
             this.queueUndo('已更新任务状态');
-            t.status = t.status === 'completed' ? 'todo' : 'completed';
+            const nextStatus = t.status === 'completed' ? 'todo' : 'completed';
+            t.status = nextStatus;
+            t.completedAt = nextStatus === 'completed' ? this.formatDate(new Date()) : null;
             if (t.status === 'completed' && t.subtasks) t.subtasks.forEach(s => s.completed = true);
             this.saveData();
             this.render();
@@ -861,10 +874,11 @@ class TodoApp {
             if (t.subtasks.every(s => s.completed)) {
                 if (!this.isInboxTask(t)) {
                     t.status = 'completed';
+                    t.completedAt = this.formatDate(new Date());
                     this.showToast('子任务全部完成，任务已自动勾选！');
                 }
             }
-            else { if (t.status === 'completed') t.status = 'todo'; }
+            else { if (t.status === 'completed') { t.status = 'todo'; t.completedAt = null; } }
             this.saveData();
             this.render();
         }
@@ -922,11 +936,11 @@ class TodoApp {
         const todayStr = this.formatDate(new Date());
         const wasInbox = this.isInboxTask(t);
         if (target === 'todo') {
-            if (t.status === 'completed') { t.status = 'todo'; changed = true; }
+            if (t.status === 'completed') { t.status = 'todo'; t.completedAt = null; changed = true; }
             if (t.inbox) { t.inbox = false; changed = true; }
             if (!t.date && wasInbox) { t.date = todayStr; changed = true; }
         } else if (target === 'done') {
-            if (t.status !== 'completed') { t.status = 'completed'; changed = true; }
+            if (t.status !== 'completed') { t.status = 'completed'; t.completedAt = todayStr; changed = true; }
             if (t.inbox) { t.inbox = false; changed = true; }
             if (!t.date && wasInbox) { t.date = todayStr; changed = true; }
             if (t.subtasks) {
@@ -938,6 +952,7 @@ class TodoApp {
             if (!t.inbox || t.status === 'completed' || t.date || t.start || t.end) changed = true;
             t.inbox = true;
             t.status = 'todo';
+            t.completedAt = null;
             t.date = '';
             t.start = '';
             t.end = '';
@@ -964,11 +979,12 @@ class TodoApp {
         const endOfWeek = new Date(startOfWeek);
         endOfWeek.setDate(startOfWeek.getDate() + 6);
         
+        const getCompletionDate = (task) => task.completedAt || task.date || '';
         const weekData = [];
         for(let i=0; i<7; i++) {
             const d = new Date(startOfWeek); d.setDate(d.getDate() + i);
             const dStr = this.formatDate(d);
-            const dayDone = tasks.filter(t => t.date === dStr && t.status === 'completed').length;
+            const dayDone = tasks.filter(t => getCompletionDate(t) === dStr && t.status === 'completed').length;
             weekData.push({ day: ['一','二','三','四','五','六','日'][i], count: dayDone });
         }
 
@@ -983,13 +999,15 @@ class TodoApp {
 
         const completedByDate = {};
         tasks.forEach(t => {
-            if (t.status !== 'completed' || !t.date) return;
-            completedByDate[t.date] = (completedByDate[t.date] || 0) + 1;
+            const dateStr = getCompletionDate(t);
+            if (t.status !== 'completed' || !dateStr) return;
+            completedByDate[dateStr] = (completedByDate[dateStr] || 0) + 1;
         });
         const completedByDateAll = {};
         allTasks.forEach(t => {
-            if (t.status !== 'completed' || !t.date) return;
-            completedByDateAll[t.date] = (completedByDateAll[t.date] || 0) + 1;
+            const dateStr = getCompletionDate(t);
+            if (t.status !== 'completed' || !dateStr) return;
+            completedByDateAll[dateStr] = (completedByDateAll[dateStr] || 0) + 1;
         });
         const today = new Date();
         const startDate = new Date(today);
@@ -1014,8 +1032,9 @@ class TodoApp {
         last7Start.setDate(today.getDate() - 6);
         const last7StartStamp = this.getDateStamp(this.formatDate(last7Start)) ?? 0;
         const last7Done = allTasks.filter(t => {
-            if (t.status !== 'completed' || !t.date) return false;
-            const stamp = this.getDateStamp(t.date) ?? 0;
+            const dateStr = getCompletionDate(t);
+            if (t.status !== 'completed' || !dateStr) return false;
+            const stamp = this.getDateStamp(dateStr) ?? 0;
             return stamp >= last7StartStamp && stamp <= todayStamp;
         }).length;
         const avgPerDay = Math.round((last7Done / 7) * 10) / 10;
