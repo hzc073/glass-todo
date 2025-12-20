@@ -468,6 +468,7 @@ class TodoApp {
         const tags = (t.tags||[]).map(tag => `<span class="tag-pill">#${tag}</span>`).join(' ');
         const isSelected = this.selectedTaskIds.has(t.id);
         const dateText = this.isInboxTask(t) ? '待办箱' : (t.date || '未设日期');
+        const isInbox = this.isInboxTask(t);
         
         const selClass = this.isSelectionMode ? `selection-mode ${isSelected ? 'selected' : ''}` : '';
         const clickHandler = `app.handleCardClick(event, ${t.id})`;
@@ -475,8 +476,8 @@ class TodoApp {
         let subHtml = '';
         if(t.subtasks && t.subtasks.length > 0 && !this.isSelectionMode) {
             const subRows = t.subtasks.map((sub, idx) => `
-                <div class="card-subtask-item" onclick="event.stopPropagation(); app.toggleSubtask(${t.id}, ${idx})">
-                    <div class="sub-checkbox ${sub.completed?'checked':''}"></div>
+                <div class="card-subtask-item" onclick="event.stopPropagation(); ${isInbox ? '' : `app.toggleSubtask(${t.id}, ${idx})`}">
+                    <div class="sub-checkbox ${sub.completed?'checked':''} ${isInbox ? 'disabled' : ''}"></div>
                     <span style="${sub.completed?'text-decoration:line-through;opacity:0.6':''}">${sub.title}</span>
                 </div>
             `).join('');
@@ -495,7 +496,7 @@ class TodoApp {
                  ontouchmove="app.handleCardMove(event)"
                  ontouchend="app.handleCardRelease()" 
                  onclick="${clickHandler}">
-                <div class="checkbox ${t.status==='completed'?'checked':''}" onclick="event.stopPropagation();app.toggleTask(${t.id})"></div>
+                <div class="checkbox ${t.status==='completed'?'checked':''} ${isInbox ? 'disabled' : ''}" ${isInbox ? 'title="待办箱任务不可完成"' : ''} onclick="event.stopPropagation();${isInbox ? '' : `app.toggleTask(${t.id})`}"></div>
                 <div style="flex:1">
                     <div class="task-title">${t.title}</div>
                     <div style="font-size:0.75rem; color:#666; margin-top:2px;">📅 ${dateText}</div>
@@ -820,6 +821,10 @@ class TodoApp {
         if(this.isSelectionMode) return;
         const t = this.data.find(t => t.id === id);
         if (t && !t.deletedAt) {
+            if (this.isInboxTask(t)) {
+                this.showToast('待办箱任务不可完成，请先移出');
+                return;
+            }
             this.queueUndo('已更新任务状态');
             t.status = t.status === 'completed' ? 'todo' : 'completed';
             if (t.status === 'completed' && t.subtasks) t.subtasks.forEach(s => s.completed = true);
@@ -833,7 +838,12 @@ class TodoApp {
         if(t && !t.deletedAt && t.subtasks && t.subtasks[subIndex]) {
             this.queueUndo('已更新子任务');
             t.subtasks[subIndex].completed = !t.subtasks[subIndex].completed;
-            if (t.subtasks.every(s => s.completed)) { t.status = 'completed'; this.showToast('子任务全部完成，任务已自动勾选！'); }
+            if (t.subtasks.every(s => s.completed)) {
+                if (!this.isInboxTask(t)) {
+                    t.status = 'completed';
+                    this.showToast('子任务全部完成，任务已自动勾选！');
+                }
+            }
             else { if (t.status === 'completed') t.status = 'todo'; }
             this.saveData();
             this.render();
