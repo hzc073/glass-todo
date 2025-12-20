@@ -87,7 +87,8 @@ body {
 .tag-more:hover { background: rgba(0,0,0,0.08); }
 
 /* 任务列表分区布局 */
-#view-tasks { overflow: hidden; display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; }
+#view-tasks { overflow: hidden; height: 100%; min-height: 0; }
+#view-tasks.view-container.active { display: flex; flex-direction: column; gap: 16px; }
 .task-board {
     display: grid;
     grid-template-columns: 1.4fr 1fr 1fr;
