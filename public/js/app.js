@@ -30,6 +30,7 @@ class TodoApp {
         this.isSelectionMode = false;
         this.selectedTaskIds = new Set();
         this.longPressTimer = null;
+        this.longPressStart = null;
         this.undoState = null;
         this.undoTimer = null;
         this.isLoggingOut = false;
@@ -488,8 +489,10 @@ class TodoApp {
                  ondragstart="app.drag(event, ${t.id})" 
                  ondragend="app.finishDrag()"
                  onmousedown="app.handleCardPress(event, ${t.id})" 
+                 onmousemove="app.handleCardMove(event)"
                  onmouseup="app.handleCardRelease()" 
                  ontouchstart="app.handleCardPress(event, ${t.id})" 
+                 ontouchmove="app.handleCardMove(event)"
                  ontouchend="app.handleCardRelease()" 
                  onclick="${clickHandler}">
                 <div class="checkbox ${t.status==='completed'?'checked':''}" onclick="event.stopPropagation();app.toggleTask(${t.id})"></div>
@@ -710,9 +713,29 @@ class TodoApp {
         if (this.isSelectionMode) return;
         // 仅在任务列表或待办箱支持长按进入多选
         if (this.view !== 'tasks') return;
+        const point = this.getPointerPoint(e);
+        this.longPressStart = point ? { x: point.x, y: point.y } : null;
         this.longPressTimer = setTimeout(() => { this.enterSelectionMode(id); this.longPressTimer = null; }, 500);
     }
-    handleCardRelease() { if (this.longPressTimer) { clearTimeout(this.longPressTimer); this.longPressTimer = null; } }
+    handleCardMove(e) {
+        if (!this.longPressTimer || !this.longPressStart) return;
+        const point = this.getPointerPoint(e);
+        if (!point) return;
+        const dx = point.x - this.longPressStart.x;
+        const dy = point.y - this.longPressStart.y;
+        if ((dx * dx + dy * dy) > 36) this.cancelLongPress();
+    }
+    handleCardRelease() { this.cancelLongPress(); }
+    cancelLongPress() {
+        if (this.longPressTimer) { clearTimeout(this.longPressTimer); this.longPressTimer = null; }
+        this.longPressStart = null;
+    }
+    getPointerPoint(e) {
+        const touch = e.touches && e.touches[0];
+        if (touch) return { x: touch.clientX, y: touch.clientY };
+        if (typeof e.clientX === 'number' && typeof e.clientY === 'number') return { x: e.clientX, y: e.clientY };
+        return null;
+    }
     enterSelectionMode(initialId) { this.isSelectionMode = true; this.selectedTaskIds.clear(); if (initialId) this.selectedTaskIds.add(initialId); if(navigator.vibrate) navigator.vibrate(50); this.render(); }
     exitSelectionMode() { this.isSelectionMode = false; this.selectedTaskIds.clear(); this.render(); }
     toggleSelection(id) { if (this.selectedTaskIds.has(id)) this.selectedTaskIds.delete(id); else this.selectedTaskIds.add(id); this.render(); }
@@ -828,6 +851,7 @@ class TodoApp {
         if(this.isSelectionMode) { ev.preventDefault(); return; } 
         const t = this.data.find(x => x.id === id);
         if (t && t.deletedAt) { ev.preventDefault(); return; }
+        this.cancelLongPress();
         this.dragActive = true;
         this.dragEndAt = 0;
         ev.dataTransfer.setData("text", id);
