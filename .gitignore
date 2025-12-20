@@ -79,9 +79,12 @@ temp/
 # =========================
 *.lnk
 STRUCTURE.txt
+tree.txt
+build-win-zip.bat
+
 # =========================
 # 注意：
-# 1) node_modules 不忽略（保留依赖）
+node_modules 
 # 2) bin 不忽略（保留内置运行时）
 # =========================
 
