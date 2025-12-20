@@ -324,6 +324,9 @@ class TodoApp {
             const doneCountEl = document.getElementById('done-count');
             if (todoCountEl) todoCountEl.innerText = `${todoTasks.length}`;
             if (doneCountEl) doneCountEl.innerText = `${doneTasks.length}`;
+            const inboxCountEl = document.getElementById('inbox-count');
+            if (inboxCountEl) inboxCountEl.innerText = `${inboxTasks.length}`;
+            this.renderInboxList(inboxTasks, 'list-inbox-desktop');
         }
         this.renderInboxList(inboxTasks, 'list-inbox');
         if (this.viewSettings.inbox) {

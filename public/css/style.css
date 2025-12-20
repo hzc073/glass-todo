@@ -88,7 +88,7 @@ body {
 
 /* 任务列表分区布局 */
 #view-tasks { overflow: hidden; display: flex; flex-direction: column; gap: 16px; }
-.task-board { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; min-height: 0; flex: 1; }
+.task-board { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 16px; min-height: 0; flex: 1; }
 .task-column { background: rgba(255,255,255,0.6); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; min-height: 0; border: 1px solid rgba(255,255,255,0.6); }
 .task-column-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .task-column-header.dim { opacity: 0.7; }
