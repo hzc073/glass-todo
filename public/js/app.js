@@ -45,6 +45,7 @@ class TodoApp {
             matrix: true
         };
         this.calendarDefaultMode = this.normalizeCalendarMode(localStorage.getItem('glass_calendar_default_mode')) || 'day';
+        this.autoMigrateEnabled = this.loadAutoMigrateSetting();
 
         // 模块初始化
         this.admin = new AdminPanel();
@@ -74,6 +75,7 @@ class TodoApp {
         this.applyViewSettings();
         this.initViewSettingsControls();
         this.initCalendarDefaultModeControl();
+        this.syncAutoMigrateUI();
         if (api.auth) this.ensureHolidayYear(this.currentDate.getFullYear());
         
         setInterval(() => { if (!document.hidden) this.loadData(); }, 30000);
@@ -167,7 +169,8 @@ class TodoApp {
                 this.dataVersion = newVer;
                 // 清理过期回收站任务（7天）
                 const cleaned = this.cleanupRecycle();
-                if (cleaned) await this.saveData(true);
+                const migrated = this.autoMigrateEnabled ? this.migrateOverdueTasks() : false;
+                if (cleaned || migrated) await this.saveData(true);
                 // 检查权限
                 if (!api.isLocalMode()) {
                     const loginCheck = await api.request('/api/login', 'POST');
@@ -270,6 +273,7 @@ class TodoApp {
         return ['day','week','month'].includes(value) ? value : '';
     }
     toggleViewSetting(key) {
+        if (key === 'auto-migrate') { this.toggleAutoMigrate(); return; }
         if (!['calendar', 'matrix'].includes(key)) return;
         this.viewSettings[key] = !this.viewSettings[key];
         localStorage.setItem('glass_view_settings', JSON.stringify(this.viewSettings));
@@ -279,13 +283,27 @@ class TodoApp {
     syncViewSettingUI() {
         const mapping = {
             calendar: 'switch-view-calendar',
-            matrix: 'switch-view-matrix'
+            matrix: 'switch-view-matrix',
+            'auto-migrate': 'switch-auto-migrate'
         };
         Object.entries(mapping).forEach(([key, id]) => {
             const el = document.getElementById(id);
-            if (el) el.classList.toggle('active', !!this.viewSettings[key]);
+            if (!el) return;
+            if (key === 'auto-migrate') el.classList.toggle('active', !!this.autoMigrateEnabled);
+            else el.classList.toggle('active', !!this.viewSettings[key]);
         });
     }
+    loadAutoMigrateSetting() {
+        const raw = localStorage.getItem('glass_auto_migrate_overdue');
+        if (raw === null) return true;
+        return raw === 'true';
+    }
+    toggleAutoMigrate() {
+        this.autoMigrateEnabled = !this.autoMigrateEnabled;
+        localStorage.setItem('glass_auto_migrate_overdue', String(this.autoMigrateEnabled));
+        this.syncViewSettingUI();
+    }
+    syncAutoMigrateUI() { this.syncViewSettingUI(); }
 
     // 代理日历方法，供 HTML onclick 调用
     setCalendarMode(mode) { this.calendar.setMode(mode); }
@@ -1279,6 +1297,39 @@ class TodoApp {
         const before = this.data.length;
         this.data = this.data.filter(t => !t.deletedAt || (now - t.deletedAt) <= 7 * 24 * 60 * 60 * 1000);
         return this.data.length !== before;
+    }
+
+    migrateOverdueTasks() {
+        const now = Date.now();
+        const dayMs = 24 * 60 * 60 * 1000;
+        let changed = false;
+        this.data.forEach(t => {
+            if (t.deletedAt) return;
+            if (t.status === 'completed') return;
+            const dateStamp = this.getDateStamp(t.date);
+            if (dateStamp !== null) {
+                const overdueMs = now - dateStamp;
+                if (overdueMs > 30 * dayMs) {
+                    t.deletedAt = now;
+                    changed = true;
+                    return;
+                }
+                if (overdueMs > 7 * dayMs && !this.isInboxTask(t)) {
+                    t.inbox = true;
+                    t.inboxAt = now;
+                    t.date = '';
+                    t.start = '';
+                    t.end = '';
+                    changed = true;
+                }
+                return;
+            }
+            if (this.isInboxTask(t) && t.inboxAt && (now - t.inboxAt) > 30 * dayMs) {
+                t.deletedAt = now;
+                changed = true;
+            }
+        });
+        return changed;
     }
     handleSearch(val) { this.filter.query = val; if(val && this.view!=='search') this.switchView('search'); this.render(); }
     
