@@ -950,6 +950,7 @@ class TodoApp {
     }
     
     renderStats(tasks = this.getFilteredData()) {
+        const allTasks = this.getFilteredData();
         const done = tasks.filter(t => t.status === 'completed').length;
         const total = tasks.length;
         const rate = total === 0 ? 0 : Math.round((done/total)*100);
@@ -985,6 +986,11 @@ class TodoApp {
             if (t.status !== 'completed' || !t.date) return;
             completedByDate[t.date] = (completedByDate[t.date] || 0) + 1;
         });
+        const completedByDateAll = {};
+        allTasks.forEach(t => {
+            if (t.status !== 'completed' || !t.date) return;
+            completedByDateAll[t.date] = (completedByDateAll[t.date] || 0) + 1;
+        });
         const today = new Date();
         const startDate = new Date(today);
         startDate.setDate(startDate.getDate() - 364);
@@ -1003,8 +1009,46 @@ class TodoApp {
             if (!c) return `<div class="heatmap-cell empty"></div>`;
             return `<div class="heatmap-cell level-${c.level}" title="${c.date} 完成 ${c.count}"></div>`;
         }).join('');
+        const todayStamp = this.getDateStamp(this.formatDate(today)) ?? 0;
+        const last7Start = new Date(today);
+        last7Start.setDate(today.getDate() - 6);
+        const last7StartStamp = this.getDateStamp(this.formatDate(last7Start)) ?? 0;
+        const last7Done = allTasks.filter(t => {
+            if (t.status !== 'completed' || !t.date) return false;
+            const stamp = this.getDateStamp(t.date) ?? 0;
+            return stamp >= last7StartStamp && stamp <= todayStamp;
+        }).length;
+        const avgPerDay = Math.round((last7Done / 7) * 10) / 10;
+        const avgText = Number.isInteger(avgPerDay) ? String(avgPerDay) : avgPerDay.toFixed(1);
+        const pendingCount = allTasks.filter(t => t.status !== 'completed').length;
+        let streak = 0;
+        for (let i = 0; i < 366; i++) {
+            const d = new Date(today);
+            d.setDate(today.getDate() - i);
+            const dStr = this.formatDate(d);
+            if (completedByDateAll[dStr]) streak += 1;
+            else break;
+        }
 
         document.getElementById('view-stats').innerHTML = `
+            <div class="stats-metrics">
+                <div class="stats-metric-card">
+                    <div class="stats-metric-title">近7天完成数</div>
+                    <div class="stats-metric-value">${last7Done}</div>
+                </div>
+                <div class="stats-metric-card">
+                    <div class="stats-metric-title">平均每天完成</div>
+                    <div class="stats-metric-value">${avgText}</div>
+                </div>
+                <div class="stats-metric-card">
+                    <div class="stats-metric-title">当前未完成</div>
+                    <div class="stats-metric-value">${pendingCount}</div>
+                </div>
+                <div class="stats-metric-card">
+                    <div class="stats-metric-title">连续完成天数</div>
+                    <div class="stats-metric-value">${streak}</div>
+                </div>
+            </div>
             <div style="display:flex; flex-wrap:wrap; gap:20px;">
                 <div class="stats-card" style="flex:1; min-width:250px; text-align:center;">
                     <h3>📊 总完成率</h3>

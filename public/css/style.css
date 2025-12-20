@@ -196,6 +196,10 @@ body {
 .week-body { flex: 1; padding: 5px; overflow-y: auto; background: rgba(255,255,255,0.1); }
 .week-task-item { background: white; padding: 8px; border-radius: 6px; margin-bottom: 6px; font-size: 0.8rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; gap: 6px; align-items: center; cursor: pointer; }
 .week-task-item.completed { opacity: 0.6; text-decoration: line-through; }
+.stats-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stats-metric-card { background: rgba(255,255,255,0.9); border: 1px solid rgba(0,0,0,0.05); border-radius: 12px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.stats-metric-title { font-size: 0.75rem; color: #666; }
+.stats-metric-value { font-size: 1.6rem; font-weight: 700; color: #222; margin-top: 6px; }
 .heatmap-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); gap: 4px; padding: 10px 0; }
 .heatmap-cell { width: 12px; height: 12px; border-radius: 3px; background: rgba(0,0,0,0.08); }
 .heatmap-cell.empty { background: transparent; }
@@ -281,6 +285,7 @@ body {
     .week-grid { flex-direction: column; height: auto; overflow: visible; padding-bottom: 80px; }
     .week-col { flex-direction: row; border-right: none; border-bottom: 1px solid rgba(0,0,0,0.05); min-height: 80px; }
     .week-header { width: 70px; border-bottom: none; border-right: 1px solid rgba(0,0,0,0.05); display: flex; flex-direction: column; justify-content: center; }
+    .stats-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     #selection-bar { bottom: 90px; }
     .mobile-only { display: block; }
     #mobile-tabbar .tab-item[data-view="recycle"] { display: none; }
