@@ -43,6 +43,7 @@ class TodoApp {
             calendar: true,
             matrix: true
         };
+        this.calendarDefaultMode = this.normalizeCalendarMode(localStorage.getItem('glass_calendar_default_mode')) || 'day';
 
         // 模块初始化
         this.admin = new AdminPanel();
@@ -71,6 +72,7 @@ class TodoApp {
         this.calendar.renderRuler();  // 委托 Calendar 渲染尺子
         this.applyViewSettings();
         this.initViewSettingsControls();
+        this.initCalendarDefaultModeControl();
         if (api.auth) this.ensureHolidayYear(this.currentDate.getFullYear());
         
         setInterval(() => { if (!document.hidden) this.loadData(); }, 30000);
@@ -223,6 +225,7 @@ class TodoApp {
 
         // 日历控件显隐委托给 CSS 或逻辑控制
         document.getElementById('calendar-controls').style.display = v === 'calendar' ? 'flex' : 'none';
+        if (v === 'calendar') this.calendar.setMode(this.calendarDefaultMode);
         
         this.render();
     }
@@ -247,6 +250,23 @@ class TodoApp {
             item.onclick = () => this.toggleViewSetting(item.dataset.key);
         });
         this.syncViewSettingUI();
+    }
+    initCalendarDefaultModeControl() {
+        const select = document.getElementById('calendar-default-mode');
+        if (!select) return;
+        select.value = this.calendarDefaultMode;
+        select.onchange = () => this.setCalendarDefaultMode(select.value);
+    }
+    setCalendarDefaultMode(mode) {
+        const normalized = this.normalizeCalendarMode(mode) || 'day';
+        this.calendarDefaultMode = normalized;
+        localStorage.setItem('glass_calendar_default_mode', normalized);
+        if (this.view === 'calendar') this.calendar.setMode(normalized);
+    }
+    normalizeCalendarMode(mode) {
+        if (!mode) return '';
+        const value = String(mode).toLowerCase();
+        return ['day','week','month'].includes(value) ? value : '';
     }
     toggleViewSetting(key) {
         if (!['calendar', 'matrix'].includes(key)) return;
