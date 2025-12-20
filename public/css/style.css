@@ -130,7 +130,7 @@ body {
 .time-slot { position: absolute; left: 55px; right: 10px; background: rgba(255,255,255,0.9); border-left: 4px solid var(--primary); border-radius: 6px; padding: 5px 8px; font-size: 0.85rem; color: #333; cursor: pointer; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); display: flex; gap: 8px; align-items: flex-start; z-index: 1; transition: left 0.3s, width 0.3s, box-shadow 0.2s; }
 .time-slot:hover { z-index: 20; transform: scale(1.02); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
 .time-slot.completed { background: #f0f0f0; border-color: #ccc; opacity: 0.8; }
-.time-slot.completed .task-title-text { text-decoration: line-through; }
+.time-slot.completed .task-title-text { text-decoration: line-through; text-decoration-thickness: 2px; }
 .time-slot .time-chip { background: rgba(0,0,0,0.05); border-radius: 6px; padding: 2px 6px; font-size: 0.72rem; color: #333; display: inline-block; }
 .time-slot .time-chip.small { font-size: 0.7rem; padding: 1px 4px; }
 .time-slot .time-slot-tags { font-size: 0.72rem; color: var(--primary); }
@@ -217,7 +217,7 @@ body {
 .month-cell.today { background: rgba(0,122,255,0.05); }
 .month-cell.holiday-off { background: rgba(52,199,89,0.06); }
 .month-cell.holiday-work { background: rgba(255,59,48,0.06); }
-.month-task-pill.completed { text-decoration: line-through; opacity: 0.7; }
+.month-task-pill.completed { text-decoration: line-through; text-decoration-thickness: 2px; opacity: 0.7; }
 .month-cell-header { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .month-task-pill { font-size: 0.7rem; padding: 2px 4px; border-radius: 3px; background: var(--primary); color: white; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; border: 1px solid rgba(0,0,0,0.05); }
 .month-task-pill .month-tag { color: rgba(255,255,255,0.9); margin-left: 4px; font-weight: 600; }
