@@ -4,6 +4,11 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const crypto = require('crypto');
+const multer = require('multer');
+const { pipeline } = require('stream');
+const { promisify } = require('util');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const db = require('./server/db');
 const { authenticate, requireAdmin, getOrInitInviteCode, generateInviteCode } = require('./server/auth');
 const webpush = require('web-push');
@@ -14,8 +19,41 @@ const PORT = Number(process.env.PORT) || 3000;
 let VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 let VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
 let VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@example.com';
+const ATTACHMENT_MAX_SIZE = 50 * 1024 * 1024;
+const ATTACHMENTS_DRIVER = String(process.env.ATTACHMENTS_DRIVER || 'local').toLowerCase();
+const ATTACHMENTS_DIR = process.env.ATTACHMENTS_DIR || path.join(__dirname, 'storage', 'attachments');
+const ATTACHMENTS_TMP_DIR = path.join(ATTACHMENTS_DIR, '_tmp');
+const ATTACHMENTS_S3_BUCKET = process.env.ATTACHMENTS_S3_BUCKET || process.env.S3_BUCKET || '';
+const ATTACHMENTS_S3_REGION = process.env.ATTACHMENTS_S3_REGION || process.env.S3_REGION || 'auto';
+const ATTACHMENTS_S3_ENDPOINT = process.env.ATTACHMENTS_S3_ENDPOINT || process.env.S3_ENDPOINT || '';
+const ATTACHMENTS_S3_PREFIX = (() => {
+    const raw = (process.env.ATTACHMENTS_S3_PREFIX || 'attachments/').replace(/^\/+/, '');
+    return raw.endsWith('/') ? raw : `${raw}/`;
+})();
+const ATTACHMENTS_S3_FORCE_PATH_STYLE = String(process.env.ATTACHMENTS_S3_FORCE_PATH_STYLE || '').toLowerCase() === 'true';
+const ATTACHMENTS_ALLOWED_EXTS = new Set([
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.md', '.csv', '.rtf',
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.svg',
+    '.psd', '.psb', '.ai', '.sketch', '.fig', '.xd', '.indd'
+]);
 const PUSH_SCAN_INTERVAL_MS = 60 * 1000;
 const PUSH_WINDOW_MS = 60 * 1000;
+const streamPipeline = promisify(pipeline);
+const isS3Driver = ATTACHMENTS_DRIVER === 's3' || ATTACHMENTS_DRIVER === 'r2';
+const s3Client = isS3Driver ? new S3Client({
+    region: ATTACHMENTS_S3_REGION,
+    endpoint: ATTACHMENTS_S3_ENDPOINT || undefined,
+    forcePathStyle: ATTACHMENTS_S3_FORCE_PATH_STYLE,
+    credentials: process.env.ATTACHMENTS_S3_ACCESS_KEY_ID
+        || process.env.ATTACHMENTS_S3_SECRET_ACCESS_KEY
+        || process.env.S3_ACCESS_KEY_ID
+        || process.env.S3_SECRET_ACCESS_KEY
+        ? {
+            accessKeyId: process.env.ATTACHMENTS_S3_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID || '',
+            secretAccessKey: process.env.ATTACHMENTS_S3_SECRET_ACCESS_KEY || process.env.S3_SECRET_ACCESS_KEY || ''
+        }
+        : undefined
+}) : null;
 
 const isPushConfigured = () => !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
 
@@ -29,6 +67,104 @@ const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
         resolve(this);
     });
 });
+
+const ensureDir = (dirPath) => {
+    if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+};
+
+const createAttachmentId = () => {
+    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    return crypto.randomBytes(16).toString('hex');
+};
+
+const encodeRFC5987Value = (val) => encodeURIComponent(val)
+    .replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+
+const buildDownloadDisposition = (filename) => {
+    const safe = String(filename || 'attachment');
+    const asciiFallback = safe.replace(/[^\x20-\x7E]/g, '_').replace(/"/g, "'");
+    return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeRFC5987Value(safe)}`;
+};
+
+const maybeDecodeLatin1Filename = (name) => {
+    if (!name) return '';
+    const raw = String(name);
+    if (!/[^\x00-\x7F]/.test(raw)) return raw;
+    const decoded = Buffer.from(raw, 'latin1').toString('utf8');
+    const hasCjk = /[\u4E00-\u9FFF]/.test(decoded);
+    const rawHasCjk = /[\u4E00-\u9FFF]/.test(raw);
+    if (hasCjk && !rawHasCjk) return decoded;
+    return raw;
+};
+
+const normalizeOriginalName = (name) => {
+    const decoded = maybeDecodeLatin1Filename(name);
+    const safe = path.basename(String(decoded || '').trim());
+    return safe || 'attachment';
+};
+
+const buildAttachmentRelPath = (id, ext) => `${id.slice(0, 2)}/${id}${ext}`;
+
+ensureDir(ATTACHMENTS_DIR);
+ensureDir(ATTACHMENTS_TMP_DIR);
+
+const attachmentUpload = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, ATTACHMENTS_TMP_DIR),
+        filename: (req, file, cb) => {
+            if (!req.attachmentId) req.attachmentId = createAttachmentId();
+            const ext = path.extname(file.originalname || '').toLowerCase();
+            req.attachmentExt = ext;
+            cb(null, `${req.attachmentId}${ext}.upload`);
+        }
+    }),
+    limits: { fileSize: ATTACHMENT_MAX_SIZE },
+    fileFilter: (req, file, cb) => {
+        const ext = path.extname(file.originalname || '').toLowerCase();
+        if (!ext || !ATTACHMENTS_ALLOWED_EXTS.has(ext)) {
+            return cb(new Error('Unsupported file type'));
+        }
+        cb(null, true);
+    }
+});
+
+const storeAttachmentFile = async ({ tmpPath, id, ext, mimeType, originalName, size }) => {
+    if (isS3Driver) {
+        if (!ATTACHMENTS_S3_BUCKET) throw new Error('Missing S3 bucket configuration');
+        const key = `${ATTACHMENTS_S3_PREFIX}${id}${ext}`;
+        const body = fs.createReadStream(tmpPath);
+        await s3Client.send(new PutObjectCommand({
+            Bucket: ATTACHMENTS_S3_BUCKET,
+            Key: key,
+            Body: body,
+            ContentType: mimeType,
+            Metadata: { original_name: encodeURIComponent(originalName) },
+            ContentLength: size
+        }));
+        fs.unlink(tmpPath, () => {});
+        return { storageDriver: ATTACHMENTS_DRIVER, storagePath: key };
+    }
+    const relPath = buildAttachmentRelPath(id, ext);
+    const absPath = path.join(ATTACHMENTS_DIR, relPath);
+    ensureDir(path.dirname(absPath));
+    fs.renameSync(tmpPath, absPath);
+    return { storageDriver: 'local', storagePath: relPath };
+};
+
+const deleteAttachmentFile = async ({ storageDriver, storagePath }) => {
+    if (storageDriver === 'local') {
+        const absPath = path.join(ATTACHMENTS_DIR, storagePath);
+        if (fs.existsSync(absPath)) fs.unlinkSync(absPath);
+        return;
+    }
+    if (isS3Driver) {
+        if (!ATTACHMENTS_S3_BUCKET) throw new Error('Missing S3 bucket configuration');
+        await s3Client.send(new DeleteObjectCommand({
+            Bucket: ATTACHMENTS_S3_BUCKET,
+            Key: storagePath
+        }));
+    }
+};
 
 const loadVapidFromDb = async () => {
     const rows = await dbAll(
@@ -281,6 +417,171 @@ app.post('/api/data', authenticate, (req, res) => {
             () => res.json({ success: true, version: newVersion })
         );
     });
+});
+
+// Attachments
+app.post('/api/tasks/:taskId/attachments', authenticate, (req, res) => {
+    attachmentUpload.single('file')(req, res, async (err) => {
+        if (err) return res.status(400).json({ error: err.message || 'Upload failed' });
+        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+        const taskId = parseInt(req.params.taskId, 10);
+        if (!Number.isFinite(taskId)) {
+            fs.unlink(req.file.path, () => {});
+            return res.status(400).json({ error: 'Invalid task id' });
+        }
+
+        const originalName = normalizeOriginalName(req.file.originalname);
+        const mimeType = req.file.mimetype || 'application/octet-stream';
+        const size = req.file.size || 0;
+        const attachmentId = req.attachmentId;
+        const attachmentExt = req.attachmentExt || '';
+
+        try {
+            const row = await dbAll("SELECT json_data, version FROM data WHERE username = ?", [req.user.username]);
+            const dataRow = row[0];
+            const tasks = dataRow && dataRow.json_data ? JSON.parse(dataRow.json_data) : [];
+            const task = tasks.find((t) => t && Number(t.id) === taskId);
+            if (!task) {
+                fs.unlink(req.file.path, () => {});
+                return res.status(404).json({ error: 'Task not found' });
+            }
+
+            const stored = await storeAttachmentFile({
+                tmpPath: req.file.path,
+                id: attachmentId,
+                ext: attachmentExt,
+                mimeType,
+                originalName,
+                size
+            });
+
+            const createdAt = Date.now();
+            const attachmentMeta = {
+                id: attachmentId,
+                name: originalName,
+                mime: mimeType,
+                size,
+                createdAt
+            };
+            if (!Array.isArray(task.attachments)) task.attachments = [];
+            task.attachments.push(attachmentMeta);
+
+            const newVersion = Date.now();
+            await dbRun('BEGIN');
+            await dbRun(
+                `INSERT INTO attachments
+                (id, owner_user_id, task_id, original_name, mime_type, size, storage_driver, storage_path, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    attachmentId,
+                    req.user.username,
+                    taskId,
+                    originalName,
+                    mimeType,
+                    size,
+                    stored.storageDriver,
+                    stored.storagePath,
+                    createdAt
+                ]
+            );
+            await dbRun(
+                "INSERT OR REPLACE INTO data (username, json_data, version) VALUES (?, ?, ?)",
+                [req.user.username, JSON.stringify(tasks), newVersion]
+            );
+            await dbRun('COMMIT');
+
+            return res.json({ success: true, attachment: attachmentMeta, version: newVersion });
+        } catch (e) {
+            try { await dbRun('ROLLBACK'); } catch (rollbackErr) {}
+            if (req.file?.path) fs.unlink(req.file.path, () => {});
+            return res.status(500).json({ error: 'Attachment upload failed' });
+        }
+    });
+});
+
+app.delete('/api/tasks/:taskId/attachments/:attachmentId', authenticate, async (req, res) => {
+    const taskId = parseInt(req.params.taskId, 10);
+    if (!Number.isFinite(taskId)) return res.status(400).json({ error: 'Invalid task id' });
+    const attachmentId = String(req.params.attachmentId || '').trim();
+    if (!attachmentId) return res.status(400).json({ error: 'Invalid attachment id' });
+
+    try {
+        const rows = await dbAll(
+            "SELECT id, owner_user_id, task_id, storage_driver, storage_path, original_name, mime_type, size FROM attachments WHERE id = ? AND owner_user_id = ?",
+            [attachmentId, req.user.username]
+        );
+        const attachment = rows[0];
+        if (!attachment || Number(attachment.task_id) !== taskId) {
+            return res.status(404).json({ error: 'Attachment not found' });
+        }
+
+        const dataRows = await dbAll("SELECT json_data FROM data WHERE username = ?", [req.user.username]);
+        const tasks = dataRows[0] && dataRows[0].json_data ? JSON.parse(dataRows[0].json_data) : [];
+        const task = tasks.find((t) => t && Number(t.id) === taskId);
+        if (!task) return res.status(404).json({ error: 'Task not found' });
+
+        if (Array.isArray(task.attachments)) {
+            task.attachments = task.attachments.filter((a) => a && a.id !== attachmentId);
+        }
+
+        const newVersion = Date.now();
+        await dbRun('BEGIN');
+        await dbRun("DELETE FROM attachments WHERE id = ? AND owner_user_id = ?", [attachmentId, req.user.username]);
+        await dbRun(
+            "INSERT OR REPLACE INTO data (username, json_data, version) VALUES (?, ?, ?)",
+            [req.user.username, JSON.stringify(tasks), newVersion]
+        );
+        await dbRun('COMMIT');
+
+        try {
+            await deleteAttachmentFile({
+                storageDriver: attachment.storage_driver,
+                storagePath: attachment.storage_path
+            });
+        } catch (e) {
+            console.warn('delete attachment file failed', e);
+        }
+
+        return res.json({ success: true, version: newVersion });
+    } catch (e) {
+        try { await dbRun('ROLLBACK'); } catch (rollbackErr) {}
+        return res.status(500).json({ error: 'Failed to delete attachment' });
+    }
+});
+
+app.get('/api/attachments/:attachmentId/download', authenticate, async (req, res) => {
+    const attachmentId = String(req.params.attachmentId || '').trim();
+    if (!attachmentId) return res.status(400).json({ error: 'Invalid attachment id' });
+
+    try {
+        const rows = await dbAll(
+            "SELECT id, owner_user_id, original_name, mime_type, size, storage_driver, storage_path FROM attachments WHERE id = ? AND owner_user_id = ?",
+            [attachmentId, req.user.username]
+        );
+        const attachment = rows[0];
+        if (!attachment) return res.status(404).json({ error: 'Attachment not found' });
+
+        const safeName = normalizeOriginalName(attachment.original_name);
+        res.setHeader('Content-Disposition', buildDownloadDisposition(safeName));
+        res.setHeader('Content-Type', attachment.mime_type || 'application/octet-stream');
+
+        if (attachment.storage_driver === 'local') {
+            const absPath = path.join(ATTACHMENTS_DIR, attachment.storage_path);
+            if (!fs.existsSync(absPath)) return res.status(404).json({ error: 'File missing' });
+            return res.sendFile(absPath);
+        }
+
+        if (!ATTACHMENTS_S3_BUCKET) return res.status(500).json({ error: 'Storage not configured' });
+        const result = await s3Client.send(new GetObjectCommand({
+            Bucket: ATTACHMENTS_S3_BUCKET,
+            Key: attachment.storage_path
+        }));
+        if (result.ContentLength) res.setHeader('Content-Length', result.ContentLength);
+        await streamPipeline(result.Body, res);
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to download attachment' });
+    }
 });
 
 // User settings

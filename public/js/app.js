@@ -52,6 +52,13 @@ class TodoApp {
         this.pomodoroPressTimer = null;
         this.pomodoroLongPressTriggered = false;
         this.pomodoroHistoryCollapsed = new Set();
+        this.attachmentAllowedExts = new Set([
+            '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.md', '.csv', '.rtf',
+            '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.svg',
+            '.psd', '.psb', '.ai', '.sketch', '.fig', '.xd', '.indd'
+        ]);
+        this.attachmentAccept = Array.from(this.attachmentAllowedExts).join(',');
+        this.pendingAttachmentDeletes = new Map();
 
 
         this.holidaysByYear = {};
@@ -98,6 +105,7 @@ class TodoApp {
         this.initMobileSwipes();
         await this.initPomodoro();
         this.initLoginEnter();
+        this.initAttachmentControls();
         if (api.auth) this.ensureHolidayYear(this.currentDate.getFullYear());
         
         setInterval(() => { if (!document.hidden) this.loadData(); }, 30000);
@@ -938,6 +946,10 @@ class TodoApp {
         const tags = (t.tags||[]).map(tag => `<span class="tag-pill">#${tag}</span>`).join(' ');
         const pomodoroCount = Number(t.pomodoros || 0);
         const pomodoroHtml = pomodoroCount ? `<span class="pomodoro-pill">🍅 ${pomodoroCount}</span>` : '';
+        const attachmentCount = Array.isArray(t.attachments)
+            ? t.attachments.filter((a) => a && !this.pendingAttachmentDeletes.has(a.id)).length
+            : 0;
+        const attachmentHtml = attachmentCount ? `<span class="attachment-pill">📎 ${attachmentCount}</span>` : '';
         const isSelected = this.selectedTaskIds.has(t.id);
         const dateText = this.isInboxTask(t) ? '待办箱' : (t.date || '未设日期');
         const isInbox = this.isInboxTask(t);
@@ -972,7 +984,7 @@ class TodoApp {
                 <div style="flex:1">
                     <div class="task-title">${t.title}</div>
                     <div style="font-size:0.75rem; color:#666; margin-top:2px;">📅 ${dateText}</div>
-                    <div style="margin-top:4px;">${pomodoroHtml}${tags}</div>
+                    <div style="margin-top:4px;">${pomodoroHtml}${attachmentHtml}${tags}</div>
                     ${t.start ? `<div style="font-size:0.75rem; color:var(--primary)">⏰ ${t.start}</div>` : ''}
                     ${subHtml}
                 </div>
@@ -1118,6 +1130,9 @@ class TodoApp {
         if(subs.length === 0) this.addSubtaskInput(); 
         else subs.forEach(s => this.addSubtaskInput(s.title, s.completed));
 
+        this.renderAttachments(t);
+        this.syncAttachmentControls(t);
+
         setTimeout(() => document.getElementById('task-title').focus(), 100);
     }
     closeModal() { document.getElementById('modal-overlay').style.display = 'none'; this.currentTaskId = null; }
@@ -1177,6 +1192,7 @@ class TodoApp {
             quadrant: document.getElementById('task-quadrant').value,
             tags: document.getElementById('task-tags').value.split(/[,，]/).map(t => t.trim()).filter(t => t),
             pomodoros: prevItem?.pomodoros || 0,
+            attachments: prevItem?.attachments || [],
             subtasks, status,
             inbox: isInbox,
             completedAt,
@@ -1674,9 +1690,11 @@ class TodoApp {
                 if (!t.deletedAt) return false;
             } else if (!includeDeleted && t.deletedAt) return false;
 
+            const attachments = (t.attachments || []).filter((a) => a && !this.pendingAttachmentDeletes.has(a.id));
             const matchQuery = !q || t.title.includes(q) 
                 || (t.tags||[]).some(tag => tag.includes(q))
-                || (t.subtasks||[]).some(s => (s.title||'').includes(q));
+                || (t.subtasks||[]).some(s => (s.title||'').includes(q))
+                || attachments.some(a => (a.name || '').includes(q));
             const matchTag = !this.filter.tag || (t.tags||[]).includes(this.filter.tag);
             return matchQuery && matchTag;
         });
@@ -2632,6 +2650,291 @@ class TodoApp {
     minutesToTime(m) { const h = Math.floor(m/60); const min = Math.floor(m%60); return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`; }
     getQuadrantColor(q) { return {q1:'var(--danger)', q2:'var(--primary)', q3:'var(--warning)', q4:'var(--success)'}[q || 'q2']; }
     isInboxTask(t) { return !!t && ((!t.date && !t.start && !t.end) || t.inbox); }
+
+    initAttachmentControls() {
+        const input = document.getElementById('task-attachments-input');
+        if (!input) return;
+        input.accept = this.attachmentAccept;
+        input.onchange = async () => {
+            const files = Array.from(input.files || []);
+            input.value = '';
+            if (!files.length) return;
+            await this.uploadAttachments(files);
+        };
+    }
+
+    getAttachmentExtension(name) {
+        const idx = String(name || '').lastIndexOf('.');
+        return idx >= 0 ? String(name).slice(idx).toLowerCase() : '';
+    }
+
+    isAttachmentAllowed(file) {
+        const ext = this.getAttachmentExtension(file?.name);
+        return !!ext && this.attachmentAllowedExts.has(ext);
+    }
+
+    formatFileSize(bytes) {
+        const size = Number(bytes) || 0;
+        if (size < 1024) return `${size} B`;
+        const kb = size / 1024;
+        if (kb < 1024) return `${kb.toFixed(1)} KB`;
+        const mb = kb / 1024;
+        return `${mb.toFixed(1)} MB`;
+    }
+
+    syncAttachmentControls(task) {
+        const input = document.getElementById('task-attachments-input');
+        const hint = document.getElementById('task-attachments-hint');
+        const uploadBtn = document.getElementById('task-attachments-btn');
+        if (!input || !uploadBtn || !hint) return;
+        const disabled = api.isLocalMode();
+        input.disabled = disabled;
+        uploadBtn.classList.toggle('disabled', disabled);
+        uploadBtn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+        if (api.isLocalMode()) {
+            hint.innerText = '本地模式不支持附件上传';
+        } else if (!task || !task.id) {
+            hint.innerText = '请先填写标题再上传附件';
+        } else {
+            hint.innerText = '支持常见文档与图片，单文件不超过 50MB，仅提供下载。';
+        }
+    }
+
+    renderAttachments(task) {
+        const list = document.getElementById('task-attachments-list');
+        if (!list) return;
+        const attachments = task && Array.isArray(task.attachments)
+            ? task.attachments.filter((a) => a && !this.pendingAttachmentDeletes.has(a.id))
+            : [];
+        list.innerHTML = '';
+        if (!attachments.length) {
+            const empty = document.createElement('div');
+            empty.className = 'attachment-empty';
+            empty.innerText = '暂无附件';
+            list.appendChild(empty);
+            return;
+        }
+        attachments.forEach((att) => {
+            if (!att) return;
+            const item = document.createElement('div');
+            item.className = 'attachment-item';
+
+            const info = document.createElement('div');
+            info.className = 'attachment-info';
+            const name = document.createElement('span');
+            name.className = 'attachment-name';
+            name.innerText = att.name || '附件';
+            const meta = document.createElement('span');
+            meta.className = 'attachment-meta';
+            meta.innerText = this.formatFileSize(att.size || 0);
+            info.appendChild(name);
+            info.appendChild(meta);
+
+            const actions = document.createElement('div');
+            actions.className = 'attachment-actions';
+            const downloadBtn = document.createElement('button');
+            downloadBtn.type = 'button';
+            downloadBtn.className = 'btn btn-sm';
+            downloadBtn.innerText = '下载';
+            downloadBtn.onclick = () => this.downloadAttachment(att);
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'btn btn-sm btn-secondary';
+            deleteBtn.innerText = '删除';
+            deleteBtn.onclick = () => this.deleteAttachment(att);
+            actions.appendChild(downloadBtn);
+            actions.appendChild(deleteBtn);
+
+            item.appendChild(info);
+            item.appendChild(actions);
+            list.appendChild(item);
+        });
+    }
+
+    async uploadAttachments(files) {
+        if (api.isLocalMode()) return alert('本地模式不支持附件上传');
+        if (!this.currentTaskId) {
+            const created = await this.createTaskForAttachmentUpload();
+            if (!created) return;
+        }
+        const task = this.data.find((t) => t && t.id === this.currentTaskId);
+        if (!task) return alert('任务不存在');
+
+        for (const file of files) {
+            if (!this.isAttachmentAllowed(file)) {
+                this.showToast(`不支持的文件类型: ${file.name}`);
+                continue;
+            }
+            if (file.size > 50 * 1024 * 1024) {
+                this.showToast(`文件过大: ${file.name}`);
+                continue;
+            }
+            try {
+                const res = await api.uploadAttachment(task.id, file);
+                const json = await res.json();
+                if (!res.ok) {
+                    this.showToast(json.error || '上传失败');
+                    continue;
+                }
+                task.attachments = Array.isArray(task.attachments) ? task.attachments : [];
+                task.attachments.push(json.attachment);
+                if (json.version) this.dataVersion = json.version;
+                this.showToast('附件已上传');
+            } catch (e) {
+                this.showToast('上传失败');
+            }
+        }
+        this.renderAttachments(task);
+    }
+
+    async createTaskForAttachmentUpload() {
+        const title = document.getElementById('task-title')?.value.trim();
+        if (!title) {
+            alert('请先填写任务标题再上传附件');
+            return false;
+        }
+        const inboxBox = document.getElementById('task-inbox');
+        const dateVal = document.getElementById('task-date').value;
+        const startVal = document.getElementById('task-start').value;
+        const endVal = document.getElementById('task-end').value;
+        let isInbox = inboxBox ? inboxBox.checked : false;
+        if (dateVal || startVal || endVal) isInbox = false;
+        const remindEnabled = document.getElementById('task-remind')?.checked;
+        if (remindEnabled && (!dateVal || !startVal)) {
+            alert('Start time reminder requires a date and start time.');
+            return false;
+        }
+        const subtasks = [];
+        document.querySelectorAll('.subtask-item').forEach(item => {
+            const input = item.querySelector('input[type="text"]');
+            const check = item.querySelector('input[type="checkbox"]');
+            if (input.value.trim()) subtasks.push({ title: input.value.trim(), completed: check.checked });
+        });
+        const remindAt = this.buildRemindAt(isInbox ? '' : dateVal, isInbox ? '' : startVal, !!remindEnabled);
+        const newItem = {
+            id: Date.now(),
+            title,
+            date: isInbox ? '' : dateVal,
+            start: isInbox ? '' : startVal,
+            end: isInbox ? '' : endVal,
+            quadrant: document.getElementById('task-quadrant').value,
+            tags: document.getElementById('task-tags').value.split(/[,，]/).map(t => t.trim()).filter(t => t),
+            pomodoros: 0,
+            attachments: [],
+            subtasks,
+            status: 'todo',
+            inbox: isInbox,
+            completedAt: null,
+            remindAt,
+            notifiedAt: null,
+            deletedAt: null
+        };
+        this.queueUndo('已创建任务');
+        this.data.push(newItem);
+        this.currentTaskId = newItem.id;
+        await this.saveData();
+        this.render();
+        this.renderTags();
+        this.showToast('已创建任务，可继续上传附件');
+        return true;
+    }
+
+    async deleteAttachment(att) {
+        if (!att || !att.id) return;
+        if (api.isLocalMode()) return;
+        if (!this.currentTaskId) return;
+        if (!confirm(`确定删除附件 "${att.name || '附件'}" 吗？`)) return;
+        if (this.pendingAttachmentDeletes.has(att.id)) return;
+        const taskId = this.currentTaskId;
+        const pending = {
+            id: att.id,
+            taskId,
+            attachment: { ...att },
+            toastEl: null,
+            timerId: null
+        };
+        const undo = () => this.undoPendingAttachmentDelete(att.id);
+        pending.toastEl = this.showAttachmentUndoToast('已删除附件', undo);
+        pending.timerId = setTimeout(() => this.finalizeAttachmentDelete(att.id), 2000);
+        this.pendingAttachmentDeletes.set(att.id, pending);
+        const task = this.data.find((t) => t && t.id === taskId);
+        this.renderAttachments(task);
+        this.render();
+    }
+
+    async downloadAttachment(att) {
+        if (!att || !att.id) return;
+        try {
+            const res = await api.downloadAttachment(att.id);
+            if (!res.ok) {
+                const json = await res.json();
+                return alert(json.error || '下载失败');
+            }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = att.name || 'attachment';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            this.showToast('下载失败');
+        }
+    }
+
+    showAttachmentUndoToast(msg, onUndo) {
+        const div = document.createElement('div');
+        div.className = 'toast show undo';
+        div.innerHTML = `<span>${msg}</span><button type="button">撤回</button>`;
+        div.querySelector('button').onclick = (e) => {
+            e.stopPropagation();
+            onUndo();
+        };
+        document.getElementById('toast-container').appendChild(div);
+        return div;
+    }
+
+    undoPendingAttachmentDelete(attachmentId) {
+        const pending = this.pendingAttachmentDeletes.get(attachmentId);
+        if (!pending) return;
+        if (pending.timerId) clearTimeout(pending.timerId);
+        if (pending.toastEl) pending.toastEl.remove();
+        this.pendingAttachmentDeletes.delete(attachmentId);
+        const task = this.data.find((t) => t && t.id === pending.taskId);
+        this.renderAttachments(task);
+        this.render();
+        this.showToast('已撤回');
+    }
+
+    async finalizeAttachmentDelete(attachmentId) {
+        const pending = this.pendingAttachmentDeletes.get(attachmentId);
+        if (!pending) return;
+        this.pendingAttachmentDeletes.delete(attachmentId);
+        if (pending.toastEl) pending.toastEl.remove();
+        try {
+            const res = await api.deleteAttachment(pending.taskId, pending.attachment.id);
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || '删除失败');
+            const task = this.data.find((t) => t && t.id === pending.taskId);
+            if (task && Array.isArray(task.attachments)) {
+                task.attachments = task.attachments.filter((a) => a && a.id !== pending.attachment.id);
+            }
+            if (json.version) this.dataVersion = json.version;
+            this.renderAttachments(task);
+            this.render();
+        } catch (e) {
+            const task = this.data.find((t) => t && t.id === pending.taskId);
+            if (task && Array.isArray(task.attachments)) {
+                const exists = task.attachments.some((a) => a && a.id === pending.attachment.id);
+                if (!exists) task.attachments.push(pending.attachment);
+            }
+            this.renderAttachments(task);
+            this.render();
+            this.showToast('删除失败，已恢复附件');
+        }
+    }
     
     // 导出
     openExportModal() { document.getElementById('export-modal-overlay').style.display = 'flex'; this.setExportType('daily'); }

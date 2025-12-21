@@ -90,6 +90,20 @@ db.serialize(() => {
     )`);
 
     db.run("CREATE INDEX IF NOT EXISTS idx_pomodoro_daily_user_date ON pomodoro_daily_stats(username, date_key)");
+
+    db.run(`CREATE TABLE IF NOT EXISTS attachments (
+        id TEXT PRIMARY KEY,
+        owner_user_id TEXT NOT NULL,
+        task_id INTEGER NOT NULL,
+        original_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        storage_driver TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+    )`);
+
+    db.run("CREATE INDEX IF NOT EXISTS idx_attachments_owner_task ON attachments(owner_user_id, task_id)");
     
     // 自动迁移：检查 is_admin 字段
     db.all("PRAGMA table_info(users)", (err, rows) => {

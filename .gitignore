@@ -26,6 +26,8 @@ database.sqlite
 .env
 *.env.local
 # =========================
+# Attachment storage
+storage/attachments/
 # OS / Editor
 # =========================
 .DS_Store

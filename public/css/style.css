@@ -487,6 +487,7 @@ body {
     display: none;
 }
 .pomodoro-pill { display: inline-block; padding: 2px 6px; border-radius: 999px; background: rgba(255,99,71,0.12); color: #d35400; font-size: 0.7rem; margin-right: 6px; }
+.attachment-pill { display: inline-block; padding: 2px 6px; border-radius: 999px; background: rgba(80,120,255,0.12); color: #2b59c3; font-size: 0.7rem; margin-right: 6px; }
 .pomodoro-task-picker { display: none; }
 .pomodoro-task-picker.open { display: block; }
 .pomodoro-task-picker {
@@ -601,4 +602,64 @@ body {
     .pomodoro-controls { margin: 6px 0 4px; }
     .pomodoro-toggle { margin-top: 6px; }
     .pomodoro-dashboard { aspect-ratio: auto; min-height: 0; height: auto; }
+}
+
+.attachment-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.attachment-upload input[type="file"] {
+    display: none;
+}
+.attachment-upload.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+.attachment-hint {
+    font-size: 0.8rem;
+    color: #777;
+}
+.attachment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+.attachment-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #f6f6f6;
+}
+.attachment-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.attachment-name {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.attachment-meta {
+    font-size: 0.78rem;
+    color: #777;
+}
+.attachment-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.attachment-empty {
+    font-size: 0.85rem;
+    color: #777;
 }

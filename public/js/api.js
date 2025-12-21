@@ -46,6 +46,10 @@ const api = {
         return `${this.baseUrl}${p}`;
     },
 
+    authHeaders() {
+        return this.auth ? { 'Authorization': this.auth } : {};
+    },
+
     loadLocalData() {
         const raw = localStorage.getItem(this.dataKey);
         const version = Number(localStorage.getItem(this.dataVersionKey) || 0);
@@ -146,6 +150,56 @@ const api = {
     async pomodoroGetSessions(limit = 50) { return (await this.request(`/api/pomodoro/sessions?limit=${limit}`)).json(); },
     async pomodoroGetSummary(days = 7) { return (await this.request(`/api/pomodoro/summary?days=${days}`)).json(); },
     async pomodoroSaveSession(session) { return (await this.request('/api/pomodoro/sessions', 'POST', session)).json(); }
+    ,
+    // Attachments
+    async uploadAttachment(taskId, file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch(this.buildUrl(`/api/tasks/${taskId}/attachments`), {
+            method: 'POST',
+            headers: this.authHeaders(),
+            body: formData
+        });
+        if (res.status === 401) {
+            if (window.app && typeof window.app.handleUnauthorized === 'function') {
+                window.app.handleUnauthorized();
+            } else {
+                this.clearAuth();
+            }
+            throw new Error('Unauthorized');
+        }
+        return res;
+    },
+    async deleteAttachment(taskId, attachmentId) {
+        const res = await fetch(this.buildUrl(`/api/tasks/${taskId}/attachments/${attachmentId}`), {
+            method: 'DELETE',
+            headers: this.authHeaders()
+        });
+        if (res.status === 401) {
+            if (window.app && typeof window.app.handleUnauthorized === 'function') {
+                window.app.handleUnauthorized();
+            } else {
+                this.clearAuth();
+            }
+            throw new Error('Unauthorized');
+        }
+        return res;
+    },
+    async downloadAttachment(attachmentId) {
+        const res = await fetch(this.buildUrl(`/api/attachments/${attachmentId}/download`), {
+            method: 'GET',
+            headers: this.authHeaders()
+        });
+        if (res.status === 401) {
+            if (window.app && typeof window.app.handleUnauthorized === 'function') {
+                window.app.handleUnauthorized();
+            } else {
+                this.clearAuth();
+            }
+            throw new Error('Unauthorized');
+        }
+        return res;
+    }
 };
 
 export default api;

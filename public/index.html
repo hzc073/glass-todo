@@ -499,6 +499,18 @@
                 <div style="color:var(--primary); cursor:pointer; font-size:0.85rem;" onclick="app.addSubtaskInput()">+ 添加子任务</div>
             </div>
 
+            <div class="form-group">
+                <label class="form-label">附件</label>
+                <div class="attachment-controls">
+                    <label id="task-attachments-btn" class="btn btn-secondary btn-sm attachment-upload">
+                        上传附件
+                        <input type="file" id="task-attachments-input" multiple>
+                    </label>
+                    <span id="task-attachments-hint" class="attachment-hint"></span>
+                </div>
+                <div id="task-attachments-list" class="attachment-list"></div>
+            </div>
+
             <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
                 <button class="btn btn-danger" style="margin-right:auto;" onclick="app.deleteCurrentTask()">删除</button>
                 <button class="btn btn-secondary" onclick="app.closeModal()">取消</button>
