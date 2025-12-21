@@ -133,7 +133,10 @@ const api = {
     async pushPublicKey() { return (await this.request('/api/push/public-key')).json(); },
     async pushSubscribe(subscription) { return (await this.request('/api/push/subscribe', 'POST', { subscription })).json(); },
     async pushUnsubscribe(endpoint) { return (await this.request('/api/push/unsubscribe', 'POST', { endpoint })).json(); },
-    async pushTest() { return (await this.request('/api/push/test', 'POST')).json(); }
+    async pushTest() { return (await this.request('/api/push/test', 'POST')).json(); },
+    // User settings
+    async userGetSettings() { return (await this.request('/api/user/settings')).json(); },
+    async userSaveSettings(settings) { return (await this.request('/api/user/settings', 'POST', settings)).json(); }
     ,
     // Pomodoro APIs
     async pomodoroGetSettings() { return (await this.request('/api/pomodoro/settings')).json(); },

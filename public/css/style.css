@@ -419,6 +419,15 @@ body {
 .pomodoro-toggle { margin-top: 10px; }
 .pomodoro-setting-row { display: grid; grid-template-columns: 1fr 120px; gap: 10px; align-items: center; margin-bottom: 10px; font-size: 0.85rem; color: #555; }
 .pomodoro-setting-input { padding: 8px 10px; }
+.pomodoro-settings .pomodoro-setting-row { justify-items: start; text-align: left; }
+.pomodoro-settings .pomodoro-setting-row .pomodoro-setting-input { justify-self: center; text-align: center; }
+.pomodoro-settings .pomodoro-toggle {
+    display: grid;
+    grid-template-columns: 1fr 120px;
+    align-items: center;
+    text-align: left;
+}
+.pomodoro-settings .pomodoro-toggle .toggle-switch { justify-self: center; }
 #pomodoro-settings-overlay {
     position: fixed;
     inset: 0;
@@ -458,6 +467,25 @@ body {
 .pomodoro-history-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed rgba(0,0,0,0.08); font-size: 0.85rem; color: #555; }
 .pomodoro-history-item:last-child { border-bottom: none; }
 .pomodoro-history-date { font-size: 0.75rem; font-weight: 600; color: #666; margin-top: 8px; margin-bottom: 4px; }
+.pomodoro-history-date {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+}
+.pomodoro-history-date::after {
+    content: '-';
+    font-size: 0.9rem;
+    color: #999;
+    margin-left: 8px;
+}
+.pomodoro-history-date.is-collapsed::after {
+    content: '+';
+}
+.pomodoro-history-group[data-collapsed="true"] {
+    display: none;
+}
 .pomodoro-pill { display: inline-block; padding: 2px 6px; border-radius: 999px; background: rgba(255,99,71,0.12); color: #d35400; font-size: 0.7rem; margin-right: 6px; }
 .pomodoro-task-picker { display: none; }
 .pomodoro-task-picker.open { display: block; }
@@ -517,6 +545,25 @@ body {
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     padding: 14px 16px;
     overflow: auto;
+}
+.pomodoro-history,
+.pomodoro-completed {
+    max-height: 220px;
+}
+.pomodoro-history #pomodoro-recent-list,
+.pomodoro-completed #pomodoro-completed-list {
+    max-height: 160px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+.pomodoro-history #pomodoro-recent-list::-webkit-scrollbar,
+.pomodoro-completed #pomodoro-completed-list::-webkit-scrollbar {
+    width: 6px;
+}
+.pomodoro-history #pomodoro-recent-list::-webkit-scrollbar-thumb,
+.pomodoro-completed #pomodoro-completed-list::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.18);
+    border-radius: 6px;
 }
 
 @media (max-width: 900px) {

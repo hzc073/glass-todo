@@ -39,7 +39,7 @@ class TodoApp {
         this.dragEndAt = 0;
         this.mobileTaskIndex = 0;
         this.pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-        this.pushEnabled = localStorage.getItem('glass_push_enabled') === 'true';
+        this.pushEnabled = false;
         this.pushSubscription = null;
         this.swRegistrationPromise = null;
         this.pomodoroSettings = this.getPomodoroDefaults();
@@ -51,18 +51,16 @@ class TodoApp {
         this.pomodoroSwipeBound = false;
         this.pomodoroPressTimer = null;
         this.pomodoroLongPressTriggered = false;
+        this.pomodoroHistoryCollapsed = new Set();
 
 
         this.holidaysByYear = {};
         this.holidayLoading = {};
-        this.viewSettings = JSON.parse(localStorage.getItem('glass_view_settings')) || {
-            calendar: true,
-            matrix: true,
-            pomodoro: true
-        };
-        if (typeof this.viewSettings.pomodoro !== 'boolean') this.viewSettings.pomodoro = true;
-        this.calendarDefaultMode = this.normalizeCalendarMode(localStorage.getItem('glass_calendar_default_mode')) || 'day';
-        this.autoMigrateEnabled = this.loadAutoMigrateSetting();
+        const defaults = this.getUserSettingsDefaults();
+        this.viewSettings = { ...defaults.viewSettings };
+        this.calendarDefaultMode = defaults.calendarDefaultMode;
+        this.autoMigrateEnabled = defaults.autoMigrateEnabled;
+        this.calendarSettings = { ...defaults.calendarSettings };
 
         // 模块初始化
         this.admin = new AdminPanel();
@@ -88,6 +86,7 @@ class TodoApp {
             document.getElementById('login-modal').style.display = 'flex';
         }
         
+        await this.loadUserSettings();
         // 样式已移至 css/style.css，这里只保留基本的兼容性处理或空实现
         this.calendar.initControls(); // 委托 Calendar 初始化控件
         this.calendar.renderRuler();  // 委托 Calendar 渲染尺子
@@ -114,6 +113,118 @@ class TodoApp {
         const sidebarTitle = document.querySelector('#sidebar h2');
         if (sidebarTitle) sidebarTitle.textContent = title;
     }
+    getUserSettingsDefaults() {
+        return {
+            viewSettings: { calendar: true, matrix: true, pomodoro: true },
+            calendarDefaultMode: 'day',
+            autoMigrateEnabled: true,
+            pushEnabled: false,
+            calendarSettings: { showTime: true, showTags: true, showLunar: true, showHoliday: true }
+        };
+    }
+    loadUserSettingsFromLocal() {
+        const defaults = this.getUserSettingsDefaults();
+        let viewSettings = defaults.viewSettings;
+        try {
+            const raw = localStorage.getItem('glass_view_settings');
+            const parsed = raw ? JSON.parse(raw) : null;
+            if (parsed && typeof parsed === 'object') {
+                viewSettings = { ...defaults.viewSettings, ...parsed };
+            }
+        } catch (e) {}
+        let calendarDefaultMode = defaults.calendarDefaultMode;
+        const mode = this.normalizeCalendarMode(localStorage.getItem('glass_calendar_default_mode'));
+        if (mode) calendarDefaultMode = mode;
+        const autoMigrateRaw = localStorage.getItem('glass_auto_migrate_overdue');
+        const autoMigrateEnabled = autoMigrateRaw === null ? defaults.autoMigrateEnabled : autoMigrateRaw === 'true';
+        const pushEnabled = localStorage.getItem('glass_push_enabled') === 'true';
+        let calendarSettings = defaults.calendarSettings;
+        try {
+            const raw = localStorage.getItem('glass_calendar_settings');
+            const parsed = raw ? JSON.parse(raw) : null;
+            if (parsed && typeof parsed === 'object') {
+                calendarSettings = { ...defaults.calendarSettings, ...parsed };
+            }
+        } catch (e) {}
+        return {
+            viewSettings,
+            calendarDefaultMode,
+            autoMigrateEnabled,
+            pushEnabled,
+            calendarSettings
+        };
+    }
+    buildUserSettingsPayload() {
+        return {
+            viewSettings: { ...this.viewSettings },
+            calendarDefaultMode: this.calendarDefaultMode,
+            autoMigrateEnabled: !!this.autoMigrateEnabled,
+            pushEnabled: !!this.pushEnabled,
+            calendarSettings: { ...this.calendarSettings }
+        };
+    }
+    applyUserSettings(settings = {}) {
+        const defaults = this.getUserSettingsDefaults();
+        const next = {
+            ...defaults,
+            ...settings,
+            viewSettings: { ...defaults.viewSettings, ...(settings.viewSettings || {}) },
+            calendarSettings: { ...defaults.calendarSettings, ...(settings.calendarSettings || {}) }
+        };
+        this.viewSettings = next.viewSettings;
+        this.calendarDefaultMode = this.normalizeCalendarMode(next.calendarDefaultMode) || defaults.calendarDefaultMode;
+        this.autoMigrateEnabled = typeof next.autoMigrateEnabled === 'boolean' ? next.autoMigrateEnabled : defaults.autoMigrateEnabled;
+        this.pushEnabled = typeof next.pushEnabled === 'boolean' ? next.pushEnabled : defaults.pushEnabled;
+        this.calendarSettings = next.calendarSettings;
+        if (this.calendar && typeof this.calendar.setSettings === 'function') {
+            this.calendar.setSettings(this.calendarSettings);
+        }
+    }
+    async saveUserSettings() {
+        const payload = this.buildUserSettingsPayload();
+        if (api.isLocalMode() || !api.auth) {
+            localStorage.setItem('glass_view_settings', JSON.stringify(payload.viewSettings));
+            localStorage.setItem('glass_calendar_default_mode', payload.calendarDefaultMode);
+            localStorage.setItem('glass_auto_migrate_overdue', String(payload.autoMigrateEnabled));
+            localStorage.setItem('glass_push_enabled', String(payload.pushEnabled));
+            localStorage.setItem('glass_calendar_settings', JSON.stringify(payload.calendarSettings));
+            return;
+        }
+        try {
+            await api.userSaveSettings({ settings: payload });
+        } catch (e) {}
+    }
+    async loadUserSettings() {
+        if (api.isLocalMode() || !api.auth) {
+            this.applyUserSettings(this.loadUserSettingsFromLocal());
+            return;
+        }
+        try {
+            const json = await api.userGetSettings();
+            const remote = json && typeof json === 'object' ? json.settings : null;
+            if (!remote) {
+                const local = this.loadUserSettingsFromLocal();
+                this.applyUserSettings(local);
+                await this.saveUserSettings();
+                return;
+            }
+            this.applyUserSettings(remote);
+        } catch (e) {
+            this.applyUserSettings(this.loadUserSettingsFromLocal());
+        }
+    }
+    syncCalendarDefaultModeUI() {
+        const select = document.getElementById('calendar-default-mode');
+        if (!select) return;
+        select.value = this.calendarDefaultMode;
+    }
+    updateCalendarSettings(nextSettings) {
+        this.calendarSettings = { ...this.calendarSettings, ...nextSettings };
+        if (this.calendar && typeof this.calendar.setSettings === 'function') {
+            this.calendar.setSettings(this.calendarSettings);
+        }
+        this.saveUserSettings();
+    }
     renderInboxList(tasks, targetId) {
         const box = document.getElementById(targetId);
         if (!box) return;
@@ -136,6 +247,12 @@ class TodoApp {
                 await this.loadData();
                 await this.syncPushSubscription();
                 await this.initPomodoro();
+                await this.loadUserSettings();
+                this.applyViewSettings();
+                this.syncViewSettingUI();
+                this.syncCalendarDefaultModeUI();
+                this.syncAutoMigrateUI();
+                this.updatePushButton();
             } else {
                 if(result.needInvite) {
                     document.getElementById('invite-field').style.display = 'block';
@@ -308,7 +425,7 @@ class TodoApp {
     setCalendarDefaultMode(mode) {
         const normalized = this.normalizeCalendarMode(mode) || 'day';
         this.calendarDefaultMode = normalized;
-        localStorage.setItem('glass_calendar_default_mode', normalized);
+        this.saveUserSettings();
         if (this.view === 'calendar') this.calendar.setMode(normalized);
     }
     normalizeCalendarMode(mode) {
@@ -320,7 +437,7 @@ class TodoApp {
         if (key === 'auto-migrate') { this.toggleAutoMigrate(); return; }
         if (!['calendar', 'matrix', 'pomodoro'].includes(key)) return;
         this.viewSettings[key] = !this.viewSettings[key];
-        localStorage.setItem('glass_view_settings', JSON.stringify(this.viewSettings));
+        this.saveUserSettings();
         this.syncViewSettingUI();
         this.applyViewSettings();
     }
@@ -345,7 +462,7 @@ class TodoApp {
     }
     toggleAutoMigrate() {
         this.autoMigrateEnabled = !this.autoMigrateEnabled;
-        localStorage.setItem('glass_auto_migrate_overdue', String(this.autoMigrateEnabled));
+        this.saveUserSettings();
         this.syncViewSettingUI();
     }
     syncAutoMigrateUI() { this.syncViewSettingUI(); }
@@ -407,14 +524,14 @@ class TodoApp {
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') {
             this.pushEnabled = false;
-            localStorage.setItem('glass_push_enabled', 'false');
+            this.saveUserSettings();
             this.updatePushButton();
             return;
         }
         try {
             await this.ensurePushSubscription();
             this.pushEnabled = true;
-            localStorage.setItem('glass_push_enabled', 'true');
+            this.saveUserSettings();
             this.showToast('通知已开启');
         } catch (e) {
             console.error(e);
@@ -429,7 +546,7 @@ class TodoApp {
             console.warn(e);
         }
         this.pushEnabled = false;
-        localStorage.setItem('glass_push_enabled', 'false');
+        this.saveUserSettings();
         this.showToast('通知已关闭');
     }
 
@@ -437,7 +554,7 @@ class TodoApp {
         if (!this.pushSupported || api.isLocalMode()) return;
         if (Notification.permission === 'denied') {
             this.pushEnabled = false;
-            localStorage.setItem('glass_push_enabled', 'false');
+            this.saveUserSettings();
             this.updatePushButton();
             return;
         }
@@ -1905,6 +2022,7 @@ class TodoApp {
         const autoBreakRow = document.getElementById('pomodoro-auto-break-switch')?.closest('.settings-toggle');
         const autoWorkRow = document.getElementById('pomodoro-auto-work-switch')?.closest('.settings-toggle');
         const autoFinishRow = document.getElementById('pomodoro-auto-finish-switch')?.closest('.settings-toggle');
+        const completedList = document.getElementById('pomodoro-completed-list');
         if (actionBtn) {
             const clearPress = () => {
                 if (this.pomodoroPressTimer) {
@@ -1959,6 +2077,15 @@ class TodoApp {
         if (autoFinishRow) {
             autoFinishRow.addEventListener('click', () => this.togglePomodoroAutoFinishTask());
         }
+        if (completedList) {
+            completedList.addEventListener('click', (e) => {
+                const header = e.target.closest('.pomodoro-history-date');
+                if (!header) return;
+                const dateKey = header.getAttribute('data-date');
+                if (!dateKey) return;
+                this.togglePomodoroHistoryGroup(dateKey);
+            });
+        }
         document.addEventListener('click', (e) => {
             const picker = document.getElementById('pomodoro-task-picker');
             const title = document.getElementById('pomodoro-task-title');
@@ -1968,6 +2095,14 @@ class TodoApp {
         });
         this.bindPomodoroSwipe();
         this.pomodoroUiBound = true;
+    }
+    togglePomodoroHistoryGroup(dateKey) {
+        if (this.pomodoroHistoryCollapsed.has(dateKey)) {
+            this.pomodoroHistoryCollapsed.delete(dateKey);
+        } else {
+            this.pomodoroHistoryCollapsed.add(dateKey);
+        }
+        this.renderPomodoro();
     }
     bindPomodoroSwipe() {
         if (this.pomodoroSwipeBound) return;
@@ -2418,9 +2553,12 @@ class TodoApp {
             });
             const items = order.flatMap((dateKey) => {
                 const rows = grouped.get(dateKey) || [];
+                const collapsed = this.pomodoroHistoryCollapsed.has(dateKey);
                 return [
-                    `<div class="pomodoro-history-date">${dateKey}</div>`,
-                    ...rows.map(label => `<div class="pomodoro-history-item"><span>${label}</span></div>`)
+                    `<div class="pomodoro-history-date${collapsed ? ' is-collapsed' : ''}" data-date="${dateKey}">${dateKey}</div>`,
+                    `<div class="pomodoro-history-group" data-date="${dateKey}" data-collapsed="${collapsed ? 'true' : 'false'}">` +
+                        rows.map(label => `<div class="pomodoro-history-item"><span>${label}</span></div>`).join('') +
+                    `</div>`
                 ];
             });
             completedEl.innerHTML = items.join('') || '<div style="font-size:0.85rem; color:#777;">暂无记录</div>';

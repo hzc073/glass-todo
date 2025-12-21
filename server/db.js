@@ -27,6 +27,12 @@ db.serialize(() => {
         value TEXT
     )`);
 
+    db.run(`CREATE TABLE IF NOT EXISTS user_settings (
+        username TEXT PRIMARY KEY,
+        settings_json TEXT,
+        updated_at INTEGER NOT NULL
+    )`);
+
     db.run(`CREATE TABLE IF NOT EXISTS push_subscriptions (
         endpoint TEXT PRIMARY KEY,
         username TEXT,

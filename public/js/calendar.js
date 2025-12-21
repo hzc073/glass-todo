@@ -2,7 +2,7 @@ export default class CalendarView {
     constructor(app) {
         this.app = app; // 持有主程序引用以访问数据
         this.mode = 'day'; // day, week, month
-        this.settings = JSON.parse(localStorage.getItem('glass_calendar_settings')) || { showTime: true, showTags: true, showLunar: true, showHoliday: true };
+        this.settings = (this.app && this.app.calendarSettings) || { showTime: true, showTags: true, showLunar: true, showHoliday: true };
         this.resizing = null;
 
         // 绑定拖拽事件监听
@@ -76,11 +76,27 @@ export default class CalendarView {
 
     toggleSetting(key) {
         this.settings[key] = !this.settings[key];
-        localStorage.setItem('glass_calendar_settings', JSON.stringify(this.settings));
+        if (this.app && typeof this.app.updateCalendarSettings === 'function') {
+            this.app.updateCalendarSettings(this.settings);
+        }
         
         const switchEl = document.getElementById('switch-'+key);
         if(switchEl) switchEl.classList.toggle('active', this.settings[key]);
         this.render();
+    }
+
+
+    setSettings(nextSettings) {
+        this.settings = { ...this.settings, ...(nextSettings || {}) };
+        this.updateSettingsUI();
+        this.render();
+    }
+
+    updateSettingsUI() {
+        ['showTime', 'showTags', 'showLunar', 'showHoliday'].forEach((key) => {
+            const switchEl = document.getElementById('switch-' + key);
+            if (switchEl) switchEl.classList.toggle('active', !!this.settings[key]);
+        });
     }
 
     setMode(mode) {

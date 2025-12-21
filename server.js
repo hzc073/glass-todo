@@ -219,6 +219,37 @@ const upsertPomodoroDailyStats = async (username, dateKey, workMinutes = 0, brea
     );
 };
 
+const getUserSettingsDefaults = () => ({
+    viewSettings: { calendar: true, matrix: true, pomodoro: true },
+    calendarDefaultMode: 'day',
+    autoMigrateEnabled: true,
+    pushEnabled: false,
+    calendarSettings: { showTime: true, showTags: true, showLunar: true, showHoliday: true }
+});
+
+const sanitizeUserSettings = (input = {}) => {
+    const defaults = getUserSettingsDefaults();
+    const viewSettings = { ...defaults.viewSettings, ...(input.viewSettings || {}) };
+    const calendarSettings = { ...defaults.calendarSettings, ...(input.calendarSettings || {}) };
+    const mode = ['day', 'week', 'month'].includes(input.calendarDefaultMode) ? input.calendarDefaultMode : defaults.calendarDefaultMode;
+    return {
+        viewSettings: {
+            calendar: !!viewSettings.calendar,
+            matrix: !!viewSettings.matrix,
+            pomodoro: !!viewSettings.pomodoro
+        },
+        calendarDefaultMode: mode,
+        autoMigrateEnabled: typeof input.autoMigrateEnabled === 'boolean' ? input.autoMigrateEnabled : defaults.autoMigrateEnabled,
+        pushEnabled: typeof input.pushEnabled === 'boolean' ? input.pushEnabled : defaults.pushEnabled,
+        calendarSettings: {
+            showTime: !!calendarSettings.showTime,
+            showTags: !!calendarSettings.showTags,
+            showLunar: !!calendarSettings.showLunar,
+            showHoliday: !!calendarSettings.showHoliday
+        }
+    };
+};
+
 // --- API 路由 ---
 
 // 1. 登录/注册
@@ -250,6 +281,38 @@ app.post('/api/data', authenticate, (req, res) => {
             () => res.json({ success: true, version: newVersion })
         );
     });
+});
+
+// User settings
+app.get('/api/user/settings', authenticate, async (req, res) => {
+    try {
+        const rows = await dbAll("SELECT settings_json FROM user_settings WHERE username = ?", [req.user.username]);
+        if (!rows.length || !rows[0].settings_json) return res.json({ settings: null });
+        let parsed = null;
+        try {
+            parsed = JSON.parse(rows[0].settings_json);
+        } catch (e) {
+            parsed = null;
+        }
+        return res.json({ settings: parsed });
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to load user settings' });
+    }
+});
+
+app.post('/api/user/settings', authenticate, async (req, res) => {
+    const raw = req.body && typeof req.body === 'object' ? (req.body.settings || req.body) : null;
+    if (!raw || typeof raw !== 'object') return res.status(400).json({ error: 'Invalid settings' });
+    const settings = sanitizeUserSettings(raw);
+    try {
+        await dbRun(
+            "INSERT OR REPLACE INTO user_settings (username, settings_json, updated_at) VALUES (?, ?, ?)",
+            [req.user.username, JSON.stringify(settings), Date.now()]
+        );
+        return res.json({ success: true, settings });
+    } catch (e) {
+        return res.status(500).json({ error: 'Failed to save user settings' });
+    }
 });
 
 // Pomodoro settings/state/sessions
