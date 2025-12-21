@@ -125,7 +125,10 @@ body {
 .task-section::-webkit-scrollbar { width: 6px; }
 .task-section::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 6px; }
 .task-group { padding: 6px 0 4px; }
-.task-group-title { font-size: 0.8rem; color: #555; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.task-group-title { font-size: 0.8rem; color: #555; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.task-group-toggle { width: 14px; text-align: center; opacity: 0.6; }
+.task-group-text { flex: 1; }
+.task-group.collapsed .task-group-list { display: none; }
 .task-group-count { background: rgba(0,0,0,0.08); border-radius: 999px; padding: 1px 6px; font-size: 0.7rem; color: #444; }
 .task-empty { opacity: 0.6; font-size: 0.85rem; padding: 6px 2px; }
 
@@ -142,7 +145,24 @@ body {
 .time-slot { position: absolute; left: 55px; right: 10px; background: rgba(255,255,255,0.9); border-left: 4px solid var(--primary); border-radius: 6px; padding: 5px 8px; font-size: 0.85rem; color: #111; cursor: pointer; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); display: flex; gap: 8px; align-items: flex-start; z-index: 1; transition: left 0.3s, width 0.3s, box-shadow 0.2s; }
 .time-slot:hover { z-index: 20; transform: scale(1.02); box-shadow: 0 8px 20px rgba(0,0,0,0.15); }
 .time-slot.completed { background: #f0f0f0; border-color: #ccc; opacity: 0.8; }
-.time-slot.completed .task-title-text { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: rgba(0,0,0,0.6); }
+.time-slot-content {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+    position: relative;
+    width: max-content;
+    max-width: 100%;
+}
+.time-slot.completed .time-slot-content::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    border-top: 2px solid rgba(0,0,0,0.6);
+    pointer-events: none;
+}
 .time-slot .time-chip { background: rgba(0,0,0,0.05); border-radius: 6px; padding: 2px 6px; font-size: 0.72rem; color: #777; display: inline-block; }
 .time-slot .time-chip.small { font-size: 0.7rem; padding: 1px 4px; }
 .time-slot .time-slot-tags { font-size: 0.72rem; color: inherit; }
@@ -305,6 +325,24 @@ body {
     align-items: flex-start;
 }
 .week-time-slot.completed { background: #f0f0f0; border-color: #ccc; opacity: 0.8; }
+.week-slot-content {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+    position: relative;
+    width: max-content;
+    max-width: 100%;
+}
+.week-time-slot.completed .week-slot-content::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    border-top: 2px solid rgba(0,0,0,0.6);
+    pointer-events: none;
+}
 .week-time-slot .time-chip { background: rgba(0,0,0,0.06); border-radius: 6px; padding: 1px 4px; font-size: 0.68rem; color: #777; display: inline-block; }
 .week-time-slot .time-chip.small { font-size: 0.65rem; padding: 0 4px; }
 .week-time-slot .time-slot-tags { font-size: 0.68rem; color: inherit; }
@@ -341,7 +379,7 @@ body {
 .month-cell.today { background: rgba(0,122,255,0.05); }
 .month-cell.holiday-off { background: rgba(52,199,89,0.06); }
 .month-cell.holiday-work { background: rgba(255,59,48,0.06); }
-.month-task-pill.completed { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: rgba(0,0,0,0.6); opacity: 0.7; }
+.month-task-pill.completed { opacity: 0.7; }
 .month-task-pill .month-time { font-size: 0.85em; color: #777; margin-right: 4px; }
 .month-cell-header { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .month-task-pill {
@@ -359,6 +397,16 @@ body {
     display: flex;
     align-items: center;
     border: 1px solid rgba(0,0,0,0.05);
+    position: relative;
+}
+.month-task-pill.completed::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    top: 50%;
+    border-top: 2px solid rgba(0,0,0,0.6);
+    pointer-events: none;
 }
 .month-task-pill .month-tag {
     color: inherit;

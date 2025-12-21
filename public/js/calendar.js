@@ -4,6 +4,7 @@ export default class CalendarView {
         this.mode = 'day'; // day, week, month
         this.settings = (this.app && this.app.calendarSettings) || { showTime: true, showTags: true, showLunar: true, showHoliday: true };
         this.resizing = null;
+        this.clickTimer = null;
 
         // 绑定拖拽事件监听
         window.addEventListener('mousemove', (e) => this.handleResizeMove(e));
@@ -199,26 +200,24 @@ export default class CalendarView {
             div.style.borderLeftColor = this.app.getQuadrantLightColor(t.quadrant);
             
             const timeLabel = this.settings.showTime && t.start ? `${t.start}${t.end ? `-${t.end}` : ''}` : '';
-            const tagHtml = this.settings.showTags && t.tags && t.tags.length
+            const inlineTagHtml = this.settings.showTags && t.tags && t.tags.length
                 ? t.tags.map((tag) => {
                     const color = this.app.getTagTextColor(tag);
                     return `<span class="time-tag" style="color:${color}">#${tag}</span>`;
                 }).join(' ')
                 : '';
-            const timeHtml = timeLabel ? `<div class="time-chip">${timeLabel}</div>` : '';
-            const tagWrap = tagHtml ? `<div class="time-slot-tags">${tagHtml}</div>` : '';
-            
-            const titleHtml = `<div class="task-title-text" style="${!isCompact ? 'font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; font-weight:500;' : ''}">${t.title}${timeLabel && isCompact ? ` <span class="time-chip small">${timeLabel}</span>` : ''}</div>`;
+            const inlineMeta = `${timeLabel ? ` <span class="time-chip small">${timeLabel}</span>` : ''}${inlineTagHtml ? ` ${inlineTagHtml}` : ''}`;
+            const titleHtml = `<div class="task-title-text" style="font-size:0.8rem; overflow:hidden; text-overflow:ellipsis; font-weight:500;">${t.title}${inlineMeta}</div>`;
 
             div.innerHTML = `
                 <div class="resize-handle top" onmousedown="app.calendar.handleResizeStart(event, ${t.id}, 'top')"></div>
-                <div class="checkbox ${t.status==='completed'?'checked':''}" onclick="event.stopPropagation();app.toggleTask(${t.id})"></div>
-                ${titleHtml}
-                ${!isCompact ? timeHtml : ''}
-                ${!isCompact ? tagWrap : ''}
+                <div class="time-slot-content">
+                    ${titleHtml}
+                </div>
                 <div class="resize-handle bottom" onmousedown="app.calendar.handleResizeStart(event, ${t.id}, 'bottom')"></div>
             `;
-            div.onclick = (e) => { e.stopPropagation(); this.app.handleCardClick(e, t.id); };
+            div.onclick = (e) => { e.stopPropagation(); this.handleCalendarClick(e, t.id); };
+            div.ondblclick = (e) => { e.stopPropagation(); this.handleCalendarDblClick(e, t.id); };
             container.appendChild(div);
         });
     }
@@ -284,7 +283,8 @@ export default class CalendarView {
                     item.draggable = true;
                     item.ondragstart = (ev) => this.app.drag(ev, t.id);
                     item.ondragend = () => this.app.finishDrag();
-                    item.onclick = (ev) => { ev.stopPropagation(); this.app.handleCardClick(ev, t.id); };
+                    item.onclick = (ev) => { ev.stopPropagation(); this.handleCalendarClick(ev, t.id); };
+                    item.ondblclick = (ev) => { ev.stopPropagation(); this.handleCalendarDblClick(ev, t.id); };
                     list.appendChild(item);
                 });
                 headerCell.appendChild(list);
@@ -353,11 +353,12 @@ export default class CalendarView {
                 const inlineMeta = `${timeLabel ? ` <span class="time-chip small">${timeLabel}</span>` : ''}${inlineTagHtml ? ` ${inlineTagHtml}` : ''}`;
                 const titleHtml = `<div class="task-title-text">${t.title}${inlineMeta}</div>`;
 
-                slot.innerHTML = `${titleHtml}`;
+                slot.innerHTML = `<div class="week-slot-content">${titleHtml}</div>`;
                 slot.draggable = true;
                 slot.ondragstart = (ev) => this.app.drag(ev, t.id);
                 slot.ondragend = () => this.app.finishDrag();
-                slot.onclick = (ev) => { ev.stopPropagation(); this.app.handleCardClick(ev, t.id); };
+                slot.onclick = (ev) => { ev.stopPropagation(); this.handleCalendarClick(ev, t.id); };
+                slot.ondblclick = (ev) => { ev.stopPropagation(); this.handleCalendarDblClick(ev, t.id); };
                 col.appendChild(slot);
             });
 
@@ -567,5 +568,20 @@ export default class CalendarView {
         }
         this.resizing = null;
         document.getElementById('ghost-line').style.display = 'none';
+    }
+
+    handleCalendarClick(e, id) {
+        if (this.clickTimer) clearTimeout(this.clickTimer);
+        this.clickTimer = setTimeout(() => {
+            this.app.handleCardClick(e, id);
+            this.clickTimer = null;
+        }, 200);
+    }
+    handleCalendarDblClick(e, id) {
+        if (this.clickTimer) {
+            clearTimeout(this.clickTimer);
+            this.clickTimer = null;
+        }
+        this.app.toggleTask(id);
     }
 }

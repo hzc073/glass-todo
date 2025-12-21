@@ -60,6 +60,7 @@ class TodoApp {
         ]);
         this.attachmentAccept = Array.from(this.attachmentAllowedExts).join(',');
         this.pendingAttachmentDeletes = new Map();
+        this.todoGroupCollapse = this.loadTodoGroupCollapse();
 
 
         this.holidaysByYear = {};
@@ -132,6 +133,28 @@ class TodoApp {
             pushEnabled: false,
             calendarSettings: { showTime: true, showTags: true, showLunar: true, showHoliday: true }
         };
+    }
+    loadTodoGroupCollapse() {
+        try {
+            const raw = localStorage.getItem('glass_todo_groups_collapsed');
+            const parsed = raw ? JSON.parse(raw) : {};
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
+    saveTodoGroupCollapse() {
+        try {
+            localStorage.setItem('glass_todo_groups_collapsed', JSON.stringify(this.todoGroupCollapse || {}));
+        } catch (e) {
+            // ignore
+        }
+    }
+    toggleTodoGroup(key) {
+        if (!key) return;
+        this.todoGroupCollapse[key] = !this.todoGroupCollapse[key];
+        this.saveTodoGroupCollapse();
+        this.render();
     }
 
     loadTagColors() {
@@ -1003,9 +1026,14 @@ class TodoApp {
             if (!g.items.length) return '';
             g.items.sort((a, b) => this.sortByDateTime(a, b));
             const itemsHtml = g.items.map(t => this.createCardHtml(t)).join('');
+            const isCollapsed = !!this.todoGroupCollapse[g.key];
             return `
-                <div class="task-group">
-                    <div class="task-group-title">${g.title}<span class="task-group-count">${g.items.length}</span></div>
+                <div class="task-group ${isCollapsed ? 'collapsed' : ''}" data-key="${g.key}">
+                    <div class="task-group-title" onclick="app.toggleTodoGroup('${g.key}')">
+                        <span class="task-group-toggle">${isCollapsed ? '+' : '-'}</span>
+                        <span class="task-group-text">${g.title}</span>
+                        <span class="task-group-count">${g.items.length}</span>
+                    </div>
                     <div class="task-group-list">${itemsHtml}</div>
                 </div>
             `;
