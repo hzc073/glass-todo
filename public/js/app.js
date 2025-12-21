@@ -52,6 +52,7 @@ class TodoApp {
         this.pomodoroPressTimer = null;
         this.pomodoroLongPressTriggered = false;
         this.pomodoroHistoryCollapsed = new Set();
+        this.activeSettingsSection = 'settings-account';
         this.attachmentAllowedExts = new Set([
             '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.md', '.csv', '.rtf',
             '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.svg',
@@ -99,6 +100,7 @@ class TodoApp {
         this.calendar.renderRuler();  // 委托 Calendar 渲染尺子
         this.applyViewSettings();
         this.initViewSettingsControls();
+        this.initSettingsNav();
         this.initCalendarDefaultModeControl();
         this.initPushControls();
         this.syncAutoMigrateUI();
@@ -393,6 +395,7 @@ class TodoApp {
         // 日历控件显隐委托给 CSS 或逻辑控制
         document.getElementById('calendar-controls').style.display = v === 'calendar' ? 'flex' : 'none';
         if (v === 'calendar') this.calendar.setMode(this.calendarDefaultMode);
+        if (v === 'settings') this.showSettingsSection(this.activeSettingsSection, { updateHash: false });
         
         this.render();
         if (v === 'tasks') this.applyTaskSwipePosition();
@@ -423,6 +426,52 @@ class TodoApp {
             item.onclick = () => this.toggleViewSetting(item.dataset.key);
         });
         this.syncViewSettingUI();
+    }
+    initSettingsNav() {
+        const nav = document.querySelector('.settings-nav');
+        if (!nav) return;
+        const links = Array.from(nav.querySelectorAll('a[href^="#settings-"]'));
+        const sections = Array.from(document.querySelectorAll('.settings-section'));
+        if (!links.length || !sections.length) return;
+        const validIds = new Set(sections.map(section => section.id));
+        const initial = this.getSettingsSectionFromHash(validIds) || this.activeSettingsSection;
+        this.showSettingsSection(initial, { updateHash: false });
+        links.forEach(link => {
+            link.addEventListener('click', (event) => {
+                event.preventDefault();
+                const targetId = (link.getAttribute('href') || '').replace('#', '');
+                if (validIds.has(targetId)) this.showSettingsSection(targetId);
+            });
+        });
+        window.addEventListener('hashchange', () => {
+            const targetId = this.getSettingsSectionFromHash(validIds);
+            if (targetId) this.showSettingsSection(targetId, { updateHash: false });
+        });
+    }
+    getSettingsSectionFromHash(validIds) {
+        const hash = (window.location.hash || '').replace('#', '');
+        if (!hash) return '';
+        if (validIds && !validIds.has(hash)) return '';
+        const el = document.getElementById(hash);
+        return el && el.classList.contains('settings-section') ? hash : '';
+    }
+    showSettingsSection(id, options = {}) {
+        if (!id) return;
+        const sections = Array.from(document.querySelectorAll('.settings-section'));
+        const links = Array.from(document.querySelectorAll('.settings-nav a[href^="#settings-"]'));
+        sections.forEach(section => {
+            section.style.display = section.id === id ? '' : 'none';
+        });
+        links.forEach(link => {
+            const targetId = (link.getAttribute('href') || '').replace('#', '');
+            link.classList.toggle('active', targetId === id);
+        });
+        this.activeSettingsSection = id;
+        if (options.updateHash === false) return;
+        const nextHash = `#${id}`;
+        if (window.location.hash !== nextHash) {
+            history.replaceState(null, '', nextHash);
+        }
     }
     initCalendarDefaultModeControl() {
         const select = document.getElementById('calendar-default-mode');

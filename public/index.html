@@ -341,66 +341,93 @@
 
         <!-- 视图: 设置 -->
         <div id="view-settings" class="view-container">
-            <div class="stats-card">
-                <h3>👤 个人中心</h3>
-                <p>当前用户: <span id="current-user" style="font-weight:bold">--</span></p>
-                <button id="admin-btn" class="btn" style="width:100%; margin-top:10px; display:none; background:#333;" onclick="app.openAdminPanel()">🛡️ 管理员面板</button>
-                <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
-                <div class="form-group">
-                    <label class="form-label">原密码</label>
-                    <input type="password" id="pwd-old" class="form-input" placeholder="请输入原密码">
+            <div class="settings-layout">
+                <div class="settings-nav">
+                    <div class="settings-nav-title">设置</div>
+                    <a href="#settings-account">账号</a>
+                    <a href="#settings-preferences">偏好设置</a>
+                    <a href="#settings-notifications">通知提醒</a>
+                    <a href="#settings-data">数据管理</a>
                 </div>
-                    <div class="form-group">
-                    <label class="form-label">新密码</label>
-                    <input type="password" id="pwd-new" class="form-input" placeholder="请输入新密码">
+                <div class="settings-content">
+                    <section id="settings-account" class="stats-card settings-section">
+                        <h3>👤 个人中心</h3>
+                        <h4 style="margin-bottom:10px;">账号信息</h4>
+                        <p>当前用户: <span id="current-user" style="font-weight:bold">--</span></p>
+                        <button id="admin-btn" class="btn" style="width:100%; margin-top:10px; display:none; background:#333;" onclick="app.openAdminPanel()">🛡️ 管理员面板</button>
+                        <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
+                        <h4 style="margin-bottom:10px;">修改密码</h4>
+                        <div class="form-group">
+                            <label class="form-label">原密码</label>
+                            <input type="password" id="pwd-old" class="form-input" placeholder="请输入原密码">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">新密码</label>
+                            <input type="password" id="pwd-new" class="form-input" placeholder="请输入新密码">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">确认新密码</label>
+                            <input type="password" id="pwd-confirm" class="form-input" placeholder="请再次输入新密码">
+                        </div>
+                        <button class="btn" style="width:100%; margin-bottom:10px;" onclick="app.changePassword()">修改密码</button>
+                        <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
+                        <button class="btn btn-danger" style="width:100%;" onclick="app.logout()">退出登录</button>
+                    </section>
+
+                    <section id="settings-preferences" class="stats-card settings-section">
+                        <h3>偏好设置</h3>
+                        <div class="settings-toggle" data-key="calendar">
+                            <span>日历视图</span>
+                            <div class="toggle-switch" id="switch-view-calendar"></div>
+                        </div>
+                        <div class="settings-toggle" data-key="matrix">
+                            <span>四象限</span>
+                            <div class="toggle-switch" id="switch-view-matrix"></div>
+                        </div>
+                        <div class="settings-toggle" data-key="pomodoro">
+                            <span>番茄钟</span>
+                            <div class="toggle-switch" id="switch-view-pomodoro"></div>
+                        </div>
+                        <div class="settings-toggle" data-key="auto-migrate">
+                            <div class="settings-label">
+                                <span>自动迁移过期任务</span>
+                                <span class="help-icon" title="规则：有日期且未完成的任务，超过7天移入待办箱（清空日期/时间，记录移入时间）；超过30天移入回收站。待办箱内任务在移入后超过30天也会进入回收站。">?</span>
+                            </div>
+                            <div class="toggle-switch" id="switch-auto-migrate"></div>
+                        </div>
+                        <div class="form-group" style="margin-top:12px;">
+                            <label class="form-label">默认日历视图</label>
+                            <select id="calendar-default-mode" class="form-input">
+                                <option value="day">日</option>
+                                <option value="week">周</option>
+                                <option value="month">月</option>
+                            </select>
+                        </div>
+                    </section>
+
+                    <section id="settings-notifications" class="stats-card settings-section">
+                        <h3>通知提醒</h3>
+                        <p style="font-size:0.85rem; color:#666; margin-bottom:10px;">开始时间提醒基于 Web Push，需要 HTTPS（localhost 例外）。</p>
+                        <button id="push-toggle-btn" class="btn btn-secondary" style="width:100%; margin-bottom:10px;">开启通知</button>
+                        <button id="push-test-btn" class="btn btn-secondary" style="width:100%; margin-bottom:10px;">发送测试通知</button>
+                    </section>
+
+                    <section id="settings-data" class="stats-card settings-section">
+                        <h3>数据管理</h3>
+                        <p style="font-size:0.85rem; color:#666; line-height:1.6; margin-bottom:12px;">
+                            导出报告：生成工作日志或周志，便于汇报与复盘。<br>
+                            导出 JSON：只包含你填写的任务内容（如标题、日期、标签、子任务），不包含附件文件与系统设置。<br>
+                            全量备份：请停止服务后备份根目录的 `database.sqlite` 与 `storage/` 文件夹，并同时导出 JSON 作为数据清单。
+                        </p>
+                        <button class="btn btn-secondary" onclick="app.openExportModal()" style="width:100%; margin-bottom:10px;">📤 导出报告</button>
+                        <button class="btn btn-secondary" onclick="app.downloadJSON()" style="width:100%; margin-bottom:10px;">💾 备份数据 (JSON)</button>
+                        <label class="btn btn-secondary" style="width:100%; margin-bottom:10px; cursor:pointer; text-align:center;">
+                            📥 导入数据 (JSON)
+                            <input type="file" accept="application/json" style="display:none" onchange="this.files[0] && app.importJSON(this.files[0])">
+                        </label>
+                    </section>
+
                 </div>
-                <div class="form-group">
-                    <label class="form-label">确认新密码</label>
-                    <input type="password" id="pwd-confirm" class="form-input" placeholder="请再次输入新密码">
-                </div>
-                <button class="btn" style="width:100%; margin-bottom:10px;" onclick="app.changePassword()">修改密码</button>
-                <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
-                <h4 style="margin-bottom:10px;">视图开关</h4>
-                <div class="settings-toggle" data-key="calendar">
-                    <span>日历视图</span>
-                    <div class="toggle-switch" id="switch-view-calendar"></div>
-                </div>
-                <div class="settings-toggle" data-key="matrix">
-                    <span>四象限</span>
-                    <div class="toggle-switch" id="switch-view-matrix"></div>
-                </div>
-                <div class="settings-toggle" data-key="pomodoro">
-                    <span>&#30058;&#33540;&#38047;</span>
-                    <div class="toggle-switch" id="switch-view-pomodoro"></div>
-                </div>
-                <div class="settings-toggle" data-key="auto-migrate">
-                    <div class="settings-label">
-                        <span>自动迁移过期任务</span>
-                        <span class="help-icon" title="规则：有日期且未完成的任务，超过7天移入待办箱（清空日期/时间，记录移入时间）；超过30天移入回收站。待办箱内任务在移入后超过30天也会进入回收站。">?</span>
-                    </div>
-                <div class="toggle-switch" id="switch-auto-migrate"></div>
-            </div>
-            <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
-            <h4 style="margin-bottom:10px;">通知提醒</h4>
-            <p style="font-size:0.85rem; color:#666; margin-bottom:10px;">开始时间提醒，关闭应用也可以通知（需要浏览器允许通知）。</p>
-            <button id="push-toggle-btn" class="btn btn-secondary" style="width:100%; margin-bottom:10px;">开启通知</button>
-            <button id="push-test-btn" class="btn btn-secondary" style="width:100%; margin-bottom:10px;">测试通知</button>
-                <div class="form-group" style="margin-top:12px;">
-                    <label class="form-label">默认日历视图</label>
-                    <select id="calendar-default-mode" class="form-input">
-                        <option value="day">日</option>
-                        <option value="week">周</option>
-                        <option value="month">月</option>
-                    </select>
-                </div>
-                <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
-                <button class="btn btn-secondary" onclick="app.openExportModal()" style="width:100%; margin-bottom:10px;">📤 导出报告</button>
-                <button class="btn btn-secondary" onclick="app.downloadJSON()" style="width:100%; margin-bottom:10px;">💾 备份数据 (JSON)</button>
-                <label class="btn btn-secondary" style="width:100%; margin-bottom:10px; cursor:pointer; text-align:center;">
-                    📥 导入数据 (JSON)
-                    <input type="file" accept="application/json" style="display:none" onchange="this.files[0] && app.importJSON(this.files[0])">
-                </label>
-                <button class="btn btn-danger" style="width:100%;" onclick="app.logout()">退出登录</button>
             </div>
         </div>
     </main>
