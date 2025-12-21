@@ -103,7 +103,7 @@ export default class CalendarView {
         this.mode = mode;
         document.querySelectorAll('.view-switch-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
         document.getElementById('cal-day-view').style.display = mode === 'day' ? 'block' : 'none';
-        document.getElementById('cal-week-view').style.display = mode === 'week' ? 'block' : 'none';
+        document.getElementById('cal-week-view').style.display = mode === 'week' ? 'flex' : 'none';
         document.getElementById('cal-month-view').style.display = mode === 'month' ? 'block' : 'none';
         this.render();
     }
@@ -162,6 +162,17 @@ export default class CalendarView {
         ).join('');
 
         const container = document.getElementById('day-timeline');
+        if (container && !container.dataset.clickBind) {
+            container.addEventListener('click', (ev) => {
+                if (ev.target.closest('.time-slot')) return;
+                const viewContainer = container.closest('.view-container');
+                const scrollTop = viewContainer ? viewContainer.scrollTop : 0;
+                const minutes = this.getMinutesFromEvent(container, ev, scrollTop);
+                const dStr = this.app.formatDate(this.app.currentDate);
+                this.createTaskAtTime(dStr, minutes);
+            });
+            container.dataset.clickBind = 'true';
+        }
         // 清理旧元素保留尺子
         Array.from(container.children).forEach(c => { 
             if(!c.classList.contains('time-ruler') && c.id !== 'ghost-line') c.remove(); 
@@ -188,7 +199,7 @@ export default class CalendarView {
             div.style.borderLeftColor = this.app.getQuadrantColor(t.quadrant);
             
             const timeLabel = this.settings.showTime && t.start ? `${t.start}${t.end ? `-${t.end}` : ''}` : '';
-            const tagText = this.settings.showTags && t.tags && t.tags.length ? t.tags.join(',') : '';
+            const tagText = this.settings.showTags && t.tags && t.tags.length ? t.tags.map(tag => `#${tag}`).join(' ') : '';
             const timeHtml = timeLabel ? `<div class="time-chip">${timeLabel}</div>` : '';
             const tagHtml = tagText ? `<div class="time-slot-tags">${tagText}</div>` : '';
             
@@ -208,8 +219,28 @@ export default class CalendarView {
     }
 
     renderWeek(tasks) {
-        const grid = document.getElementById('week-grid');
-        grid.innerHTML = '';
+        const headerRow = document.getElementById('week-header-row');
+        const daysEl = document.getElementById('week-days');
+        if (!headerRow || !daysEl) return;
+        headerRow.innerHTML = '';
+        daysEl.innerHTML = '';
+        const headerTime = document.createElement('div');
+        headerTime.className = 'week-header-time';
+        const headerScroll = document.createElement('div');
+        headerScroll.className = 'week-header-scroll';
+        const headerDays = document.createElement('div');
+        headerDays.className = 'week-header-days';
+        headerScroll.appendChild(headerDays);
+        headerRow.appendChild(headerTime);
+        headerRow.appendChild(headerScroll);
+
+        const weekTimeline = document.getElementById('week-timeline');
+        if (weekTimeline) {
+            weekTimeline.onscroll = () => {
+                headerScroll.scrollLeft = weekTimeline.scrollLeft;
+            };
+            headerScroll.scrollLeft = weekTimeline.scrollLeft;
+        }
         const start = new Date(this.app.currentDate);
         start.setDate(start.getDate() - start.getDay());
         
@@ -222,31 +253,105 @@ export default class CalendarView {
             const holidayHtml = holiday
                 ? `<div class="holiday-tag ${holiday.isOffDay ? 'off' : 'work'}">${holiday.name}${holiday.isOffDay ? '' : '·班'}</div>`
                 : `<div class="holiday-tag placeholder"></div>`;
-            
+
+            const headerCell = document.createElement('div');
+            headerCell.className = 'week-header-cell';
+            if (isToday) headerCell.style.cssText = 'background:rgba(0,122,255,0.1);color:var(--primary);';
+            headerCell.innerHTML = `
+                <div>${['日','一','二','三','四','五','六'][i]}</div>
+                <div style="font-weight:bold">${d.getDate()}</div>
+                ${lunarText ? `<div class="lunar-text">${lunarText}</div>` : ''}
+                ${holidayHtml}
+            `;
+            headerCell.setAttribute('ondragover', 'app.allowDrop(event)');
+            headerCell.setAttribute('ondrop', `app.dropOnDate(event, '${dStr}')`);
+            headerCell.setAttribute('ondragleave', 'app.leaveDrop(event)');
+            headerCell.addEventListener('click', () => this.app.openModal(null, dStr));
+
+            const allDayTasks = tasks.filter(t => t.date === dStr && !t.start);
+            if (allDayTasks.length) {
+                const list = document.createElement('div');
+                list.className = 'week-allday-list';
+                allDayTasks.forEach((t) => {
+                    const item = document.createElement('div');
+                    item.className = `week-allday-item ${t.status}`;
+                    item.textContent = t.title;
+                    item.draggable = true;
+                    item.ondragstart = (ev) => this.app.drag(ev, t.id);
+                    item.ondragend = () => this.app.finishDrag();
+                    item.onclick = (ev) => { ev.stopPropagation(); this.app.handleCardClick(ev, t.id); };
+                    list.appendChild(item);
+                });
+                headerCell.appendChild(list);
+            }
+            headerDays.appendChild(headerCell);
+
             const col = document.createElement('div');
-            col.className = 'week-col';
+            col.className = 'week-day-column';
             col.setAttribute('ondragover', 'app.allowDrop(event)');
             col.setAttribute('ondrop', `app.dropOnDate(event, '${dStr}')`);
             col.setAttribute('ondragleave', 'app.leaveDrop(event)');
-            
-            col.innerHTML = `
-                <div class="week-header" style="${isToday?'background:rgba(0,122,255,0.1);color:var(--primary)':''}">
-                    <div>${['日','一','二','三','四','五','六'][i]}</div>
-                    <div style="font-weight:bold">${d.getDate()}</div>
-                    ${lunarText ? `<div class="lunar-text">${lunarText}</div>` : ''}
-                    ${holidayHtml}
-                </div>
-                <div class="week-body" onclick="app.openModal(null, '${dStr}')">
-                    ${tasks.filter(t=>t.date===dStr).map(t => {
-                        const timeHtml = this.settings.showTime && t.start ? `<span style="opacity:0.7; font-size:0.7rem; margin-right:4px;">${t.start}</span>` : '';
-                        const tagHtml = this.settings.showTags && t.tags && t.tags.length ? `<span style="font-size:0.7rem; color:var(--primary); margin-left:4px;">#${t.tags[0]}</span>` : '';
-                        return `<div class="week-task-item ${t.status}" draggable="true" ondragstart="app.drag(event, ${t.id})" ondragend="app.finishDrag()" onclick="event.stopPropagation();app.handleCardClick(event, ${t.id})">
-                            ${timeHtml}${t.title}${tagHtml}
-                        </div>`;
-                    }).join('')}
-                </div>
-            `;
-            grid.appendChild(col);
+            col.addEventListener('click', (ev) => {
+                if (ev.target.closest('.week-time-slot')) return;
+                if (ev.target.closest('.week-allday-item')) return;
+                const weekTimeline = document.getElementById('week-timeline');
+                const scrollTop = weekTimeline ? weekTimeline.scrollTop : 0;
+                const minutes = this.getMinutesFromEvent(weekTimeline || col, ev, scrollTop);
+                this.createTaskAtTime(dStr, minutes);
+            });
+
+            const timedTasks = tasks
+                .filter(t => t.date === dStr && t.start)
+                .map(t => {
+                    const startMin = this.app.timeToMinutes(t.start);
+                    const endMin = t.end ? this.app.timeToMinutes(t.end) : startMin + 60;
+                    return { task: t, startMin, endMin: Math.max(startMin + 15, Math.min(1439, endMin)) };
+                })
+                .sort((a, b) => a.startMin - b.startMin);
+
+            const lanes = [];
+            let maxLanes = 1;
+            timedTasks.forEach((item) => {
+                let laneIndex = lanes.findIndex(endMin => endMin <= item.startMin);
+                if (laneIndex === -1) {
+                    laneIndex = lanes.length;
+                    lanes.push(item.endMin);
+                } else {
+                    lanes[laneIndex] = item.endMin;
+                }
+                item.laneIndex = laneIndex;
+                maxLanes = Math.max(maxLanes, lanes.length);
+            });
+
+            timedTasks.forEach((item) => {
+                const t = item.task;
+                const height = Math.max(15, item.endMin - item.startMin);
+                const isCompact = height < 32;
+                const slot = document.createElement('div');
+                slot.className = `week-time-slot ${t.status} ${isCompact ? 'is-compact' : ''}`;
+                slot.style.top = item.startMin + 'px';
+                slot.style.height = height + 'px';
+                slot.style.borderLeftColor = this.app.getQuadrantColor(t.quadrant);
+
+                const widthPercent = 100 / maxLanes;
+                const leftPercent = item.laneIndex * widthPercent;
+                slot.style.left = `calc(${leftPercent}% + 4px)`;
+                slot.style.width = `calc(${widthPercent}% - 8px)`;
+
+                const timeLabel = this.settings.showTime && t.start ? `${t.start}${t.end ? `-${t.end}` : ''}` : '';
+                const tagText = this.settings.showTags && t.tags && t.tags.length ? t.tags.map(tag => `#${tag}`).join(' ') : '';
+                const inlineMeta = `${timeLabel ? ` <span class="time-chip small">${timeLabel}</span>` : ''}${tagText ? ` <span class="week-inline-tag">${tagText}</span>` : ''}`;
+                const titleHtml = `<div class="task-title-text">${t.title}${inlineMeta}</div>`;
+
+                slot.innerHTML = `${titleHtml}`;
+                slot.draggable = true;
+                slot.ondragstart = (ev) => this.app.drag(ev, t.id);
+                slot.ondragend = () => this.app.finishDrag();
+                slot.onclick = (ev) => { ev.stopPropagation(); this.app.handleCardClick(ev, t.id); };
+                col.appendChild(slot);
+            });
+
+            daysEl.appendChild(col);
         }
     }
 
@@ -328,7 +433,11 @@ export default class CalendarView {
     }
 
     renderRuler() {
-        document.getElementById('time-ruler').innerHTML = Array.from({length:24}, (_,i) => `<div class="hour-mark">${i}:00</div>`).join('');
+        const hourHtml = Array.from({length:24}, (_,i) => `<div class="hour-mark">${i}:00</div>`).join('');
+        const ruler = document.getElementById('time-ruler');
+        if (ruler) ruler.innerHTML = hourHtml;
+        const weekRuler = document.getElementById('week-time-ruler');
+        if (weekRuler) weekRuler.innerHTML = hourHtml;
     }
 
     // --- 交互逻辑 (Timeline Drop & Resize) ---
@@ -367,6 +476,18 @@ export default class CalendarView {
 
     clampMinutes(val) { return Math.max(0, Math.min(1439, val)); }
     snapToQuarter(val) { return Math.round(val / 15) * 15; }
+    getMinutesFromEvent(container, ev, scrollTop = 0) {
+        const rect = container.getBoundingClientRect();
+        const offsetY = ev.clientY - rect.top + scrollTop;
+        return this.snapToQuarter(this.clampMinutes(Math.floor(offsetY)));
+    }
+
+    createTaskAtTime(dateStr, minutes) {
+        this.app.openModal(null, dateStr);
+        const start = this.app.minutesToTime(minutes);
+        const startEl = document.getElementById('task-start');
+        if (startEl) startEl.value = start;
+    }
 
     handleResizeStart(e, id, direction) {
         if(this.app.isSelectionMode) return;
