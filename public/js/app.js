@@ -1,4 +1,4 @@
-import api from './api.js';
+﻿import api from './api.js';
 import AdminPanel from './admin.js';
 import CalendarView from './calendar.js';
 
@@ -38,6 +38,10 @@ class TodoApp {
         this.dragActive = false;
         this.dragEndAt = 0;
         this.mobileTaskIndex = 0;
+        this.pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+        this.pushEnabled = localStorage.getItem('glass_push_enabled') === 'true';
+        this.pushSubscription = null;
+        this.swRegistrationPromise = null;
 
         this.holidaysByYear = {};
         this.holidayLoading = {};
@@ -67,6 +71,7 @@ class TodoApp {
             document.getElementById('login-modal').style.display = 'none';
             document.getElementById('current-user').innerText = api.user;
             await this.loadData();
+            await this.syncPushSubscription();
         } else {
             document.getElementById('login-modal').style.display = 'flex';
         }
@@ -77,6 +82,7 @@ class TodoApp {
         this.applyViewSettings();
         this.initViewSettingsControls();
         this.initCalendarDefaultModeControl();
+        this.initPushControls();
         this.syncAutoMigrateUI();
         this.initMobileSwipes();
         if (api.auth) this.ensureHolidayYear(this.currentDate.getFullYear());
@@ -113,7 +119,8 @@ class TodoApp {
                 this.isLoggingOut = false;
                 document.getElementById('login-modal').style.display = 'none';
                 document.getElementById('current-user').innerText = u;
-                this.loadData();
+                await this.loadData();
+                await this.syncPushSubscription();
             } else {
                 if(result.needInvite) {
                     document.getElementById('invite-field').style.display = 'block';
@@ -310,11 +317,167 @@ class TodoApp {
     syncAutoMigrateUI() { this.syncViewSettingUI(); }
     registerServiceWorker() {
         if (!('serviceWorker' in navigator)) return;
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('sw.js').catch((err) => {
-                console.warn('Service worker registration failed', err);
-            });
+        this.swRegistrationPromise = navigator.serviceWorker.register('sw.js').catch((err) => {
+            console.warn('Service worker registration failed', err);
+            return null;
         });
+    }
+
+    initPushControls() {
+        const btn = document.getElementById('push-toggle-btn');
+        if (!btn) return;
+        if (!this.pushSupported || api.isLocalMode()) {
+            btn.disabled = true;
+            btn.textContent = api.isLocalMode() ? '本地模式不支持' : '浏览器不支持';
+            return;
+        }
+        btn.onclick = () => this.togglePushSubscription();
+        const testBtn = document.getElementById('push-test-btn');
+        if (testBtn) {
+            testBtn.onclick = () => this.sendTestPush();
+        }
+        this.updatePushButton();
+    }
+
+    updatePushButton() {
+        const btn = document.getElementById('push-toggle-btn');
+        if (!btn) return;
+        if (!this.pushSupported || api.isLocalMode()) return;
+        const perm = Notification.permission;
+        const enabled = this.pushEnabled && perm === 'granted';
+        if (perm === 'denied') {
+            btn.disabled = true;
+            btn.textContent = '通知被禁用';
+            return;
+        }
+        btn.disabled = false;
+        btn.textContent = enabled ? '关闭通知' : '开启通知';
+    }
+
+    async togglePushSubscription() {
+        if (!this.pushSupported || api.isLocalMode()) return;
+        if (Notification.permission === 'denied') {
+            this.showToast('通知权限被禁用');
+            this.updatePushButton();
+            return;
+        }
+        if (!this.pushEnabled) {
+            await this.enablePush();
+        } else {
+            await this.disablePush();
+        }
+        this.updatePushButton();
+    }
+
+    async enablePush() {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+            this.pushEnabled = false;
+            localStorage.setItem('glass_push_enabled', 'false');
+            this.updatePushButton();
+            return;
+        }
+        try {
+            await this.ensurePushSubscription();
+            this.pushEnabled = true;
+            localStorage.setItem('glass_push_enabled', 'true');
+            this.showToast('通知已开启');
+        } catch (e) {
+            console.error(e);
+            this.showToast('开启通知失败');
+        }
+    }
+
+    async disablePush() {
+        try {
+            await this.removePushSubscription();
+        } catch (e) {
+            console.warn(e);
+        }
+        this.pushEnabled = false;
+        localStorage.setItem('glass_push_enabled', 'false');
+        this.showToast('通知已关闭');
+    }
+
+    async syncPushSubscription() {
+        if (!this.pushSupported || api.isLocalMode()) return;
+        if (Notification.permission === 'denied') {
+            this.pushEnabled = false;
+            localStorage.setItem('glass_push_enabled', 'false');
+            this.updatePushButton();
+            return;
+        }
+        if (this.pushEnabled && Notification.permission === 'granted') {
+            try {
+                await this.ensurePushSubscription();
+            } catch (e) {
+                console.warn(e);
+            }
+        }
+        this.updatePushButton();
+    }
+
+    async ensurePushSubscription() {
+        const { key } = await api.pushPublicKey();
+        const reg = this.swRegistrationPromise
+            ? await this.swRegistrationPromise
+            : await navigator.serviceWorker.ready;
+        if (!reg) throw new Error('Service worker not ready');
+        const existing = await reg.pushManager.getSubscription();
+        if (existing) {
+            this.pushSubscription = existing;
+            await api.pushSubscribe(existing);
+            return;
+        }
+        const appKey = this.urlBase64ToUint8Array(key);
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+        this.pushSubscription = sub;
+        await api.pushSubscribe(sub);
+    }
+
+    async removePushSubscription() {
+        const reg = this.swRegistrationPromise
+            ? await this.swRegistrationPromise
+            : await navigator.serviceWorker.ready;
+        if (!reg) return;
+        const sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+            await api.pushUnsubscribe();
+            return;
+        }
+        await api.pushUnsubscribe(sub.endpoint);
+        await sub.unsubscribe();
+    }
+
+    async sendTestPush() {
+        if (!this.pushSupported || api.isLocalMode()) return;
+        if (Notification.permission !== 'granted') {
+            this.showToast('请先开启通知权限');
+            return;
+        }
+        try {
+            await this.ensurePushSubscription();
+            const res = await api.pushTest();
+            if (res && res.success) {
+                this.showToast('已发送测试通知');
+            } else {
+                this.showToast(res.error || '测试通知失败');
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('测试通知失败');
+        }
+    }
+
+    urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; i += 1) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
     }
 
     isMobileViewport() {
@@ -734,16 +897,27 @@ class TodoApp {
         document.getElementById('task-quadrant').value = t ? t.quadrant || 'q2' : 'q2';
         document.getElementById('task-tags').value = t ? (t.tags || []).join(', ') : '';
         const inboxBox = document.getElementById('task-inbox');
+        const remindBox = document.getElementById('task-remind');
+        if (remindBox) {
+            remindBox.checked = !!(t && t.remindAt);
+            remindBox.disabled = isInbox;
+            if (isInbox) remindBox.checked = false;
+        }
         if (inboxBox) {
             inboxBox.checked = isInbox;
             inboxBox.onchange = () => {
                 if (!inboxBox.checked) {
                     const dateEl = document.getElementById('task-date');
                     if (dateEl && !dateEl.value) dateEl.value = this.formatDate(this.currentDate);
+                    if (remindBox) remindBox.disabled = false;
                 } else {
                     document.getElementById('task-date').value = '';
                     document.getElementById('task-start').value = '';
                     document.getElementById('task-end').value = '';
+                    if (remindBox) {
+                        remindBox.checked = false;
+                        remindBox.disabled = true;
+                    }
                 }
             };
         }
@@ -751,6 +925,10 @@ class TodoApp {
             document.getElementById('task-date').value = '';
             document.getElementById('task-start').value = '';
             document.getElementById('task-end').value = '';
+            if (remindBox) {
+                remindBox.checked = false;
+                remindBox.disabled = true;
+            }
         }
 
         const repeatBox = document.getElementById('task-repeat-enabled');
@@ -789,6 +967,10 @@ class TodoApp {
         let isInbox = inboxBox ? inboxBox.checked : false;
         if (dateVal || startVal || endVal) isInbox = false;
         const repeatEnabled = !isEdit && !isInbox && (document.getElementById('task-repeat-enabled')?.checked);
+        const remindEnabled = document.getElementById('task-remind')?.checked;
+        if (remindEnabled && (!dateVal || !startVal)) {
+            return alert("Start time reminder requires a date and start time.");
+        }
         if (repeatEnabled && !document.getElementById('task-date').value) {
             return alert("重复任务需要设置日期");
         }
@@ -816,6 +998,9 @@ class TodoApp {
             completedAt = prevItem.completedAt;
         }
 
+        const remindAt = this.buildRemindAt(isInbox ? '' : dateVal, isInbox ? '' : startVal, !!remindEnabled);
+        let notifiedAt = prevItem && prevItem.remindAt === remindAt ? (prevItem.notifiedAt || null) : null;
+
         const newItem = {
             id: this.currentTaskId || Date.now(),
             title, 
@@ -827,6 +1012,8 @@ class TodoApp {
             subtasks, status,
             inbox: isInbox,
             completedAt,
+            remindAt,
+            notifiedAt,
             deletedAt: this.currentTaskId ? (this.data.find(i=>i.id==this.currentTaskId)?.deletedAt || null) : null
         };
 
@@ -845,10 +1032,13 @@ class TodoApp {
                 const baseId = Date.now();
                 dates.forEach((d, idx) => {
                     const dateStr = this.formatDate(d);
+                    const repeatRemindAt = this.buildRemindAt(dateStr, startVal, !!remindEnabled);
                     this.data.push({
                         ...newItem,
                         id: baseId + idx,
-                        date: dateStr
+                        date: dateStr,
+                        remindAt: repeatRemindAt,
+                        notifiedAt: null
                     });
                 });
             } else {
@@ -1482,6 +1672,13 @@ class TodoApp {
         this.showToast('已撤回');
     }
     
+    buildRemindAt(dateStr, startStr, enabled) {
+        if (!enabled || !dateStr || !startStr) return null;
+        const dt = new Date(`${dateStr}T${startStr}:00`);
+        const ts = dt.getTime() - (60 * 1000);
+        return Number.isNaN(ts) ? null : ts;
+    }
+
     formatDate(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
     timeToMinutes(str) { const [h,m] = str.split(':').map(Number); return h*60+m; }
     minutesToTime(m) { const h = Math.floor(m/60); const min = Math.floor(m%60); return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`; }
@@ -1539,3 +1736,5 @@ loadAppConfig().then((config) => {
     app.applyConfig(config);
     app.init();
 });
+
+

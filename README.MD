@@ -1,4 +1,4 @@
-# Glass Todo 
+﻿# Glass Todo 
 > 一个运行在你自己电脑里的 Todo / 日程工具  
 > 支持windows，docker,cloudflare部署。
 
@@ -45,3 +45,7 @@ https://demo.gemmm.top
 👉 详细部署说明请查看 `docs/index.md`
 
 
+
+
+## 通知提醒（Push）
+默认会自动生成 VAPID 密钥，也可手动生成并修改。详情请见 `docs/index.md` 中的“通知提醒（Push）”。

@@ -127,7 +127,13 @@ const api = {
     // Password
     async changePassword(oldPassword, newPassword) {
         return await this.request('/api/change-pwd', 'POST', { oldPassword, newPassword });
-    }
+    },
+
+    // Push notifications
+    async pushPublicKey() { return (await this.request('/api/push/public-key')).json(); },
+    async pushSubscribe(subscription) { return (await this.request('/api/push/subscribe', 'POST', { subscription })).json(); },
+    async pushUnsubscribe(endpoint) { return (await this.request('/api/push/unsubscribe', 'POST', { endpoint })).json(); },
+    async pushTest() { return (await this.request('/api/push/test', 'POST')).json(); }
 };
 
 export default api;

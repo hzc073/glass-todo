@@ -26,6 +26,15 @@ db.serialize(() => {
         key TEXT PRIMARY KEY,
         value TEXT
     )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS push_subscriptions (
+        endpoint TEXT PRIMARY KEY,
+        username TEXT,
+        p256dh TEXT,
+        auth TEXT,
+        expiration_time INTEGER,
+        created_at INTEGER
+    )`);
     
     // 自动迁移：检查 is_admin 字段
     db.all("PRAGMA table_info(users)", (err, rows) => {

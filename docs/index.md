@@ -1,4 +1,4 @@
-Glass Todo 使用指南
+﻿Glass Todo 使用指南
 
 欢迎使用 Glass Todo！本项目支持两种运行模式，你可以根据自己的需求灵活选择。
 
@@ -106,3 +106,33 @@ Glass Todo 使用指南
 部分地区连接 *.workers.dev 或 *.pages.dev 可能存在网络波动。
 
 解决方案：建议在 Cloudflare 后台为 Pages 和 Worker 绑定自定义域名 (Custom Domain)，访问速度会稳定很多。
+
+---
+
+
+---
+
+## 通知提醒（Push）
+
+开始时间提醒基于 Web Push，需要 HTTPS（localhost 例外）。服务端需要 VAPID 密钥。
+
+### 方案 A：自动生成（默认）
+服务启动时如果没有配置 VAPID，会自动生成并写入数据库 `settings` 表，后续会复用这对密钥。  
+适合本地/局域网快速部署。
+
+### 方案 B：手动生成并配置（推荐用于生产）
+1. 在任意机器执行：
+```
+npx web-push generate-vapid-keys
+```
+2. 把输出的公私钥写入环境变量：
+```
+VAPID_PUBLIC_KEY=你的PublicKey
+VAPID_PRIVATE_KEY=你的PrivateKey
+VAPID_SUBJECT=mailto:admin@example.com
+```
+3. 重启服务。
+
+### 如何更换/迁移密钥
+如果多台机器部署同一套服务，建议使用同一对 VAPID 公私钥。  
+要更换密钥，直接修改环境变量并重启，或删除 `settings` 表中的 `vapid_*` 项后重启让系统重新生成。

@@ -256,8 +256,13 @@
                         <span>自动迁移过期任务</span>
                         <span class="help-icon" title="规则：有日期且未完成的任务，超过7天移入待办箱（清空日期/时间，记录移入时间）；超过30天移入回收站。待办箱内任务在移入后超过30天也会进入回收站。">?</span>
                     </div>
-                    <div class="toggle-switch" id="switch-auto-migrate"></div>
-                </div>
+                <div class="toggle-switch" id="switch-auto-migrate"></div>
+            </div>
+            <hr style="margin:15px 0; border:0; border-top:1px solid #eee;">
+            <h4 style="margin-bottom:10px;">通知提醒</h4>
+            <p style="font-size:0.85rem; color:#666; margin-bottom:10px;">开始时间提醒，关闭应用也可以通知（需要浏览器允许通知）。</p>
+            <button id="push-toggle-btn" class="btn btn-secondary" style="width:100%; margin-bottom:10px;">开启通知</button>
+            <button id="push-test-btn" class="btn btn-secondary" style="width:100%; margin-bottom:10px;">测试通知</button>
                 <div class="form-group" style="margin-top:12px;">
                     <label class="form-label">默认日历视图</label>
                     <select id="calendar-default-mode" class="form-input">
@@ -304,6 +309,12 @@
                     <label class="form-label">结束</label>
                     <input type="time" id="task-end" class="form-input">
                 </div>
+            </div>
+
+            <div class="form-group" style="display:flex; align-items:center; gap:10px;">
+                <input type="checkbox" id="task-remind" style="width:auto; height:auto;">
+                <label for="task-remind" class="form-label" style="margin:0;">开始时间提醒</label>
+                <span class="help-icon" title="需要设置日期和开始时间，关闭应用也可通知。">?</span>
             </div>
 
             <div class="form-group">

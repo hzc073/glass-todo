@@ -11,6 +11,10 @@ cd /d "%~dp0"
 :: 2. 设置临时环境变量
 set "LOCAL_NODE=%~dp0bin"
 set "PATH=%LOCAL_NODE%;%PATH%"
+set "USE_LOCAL_STORAGE=false"
+set "VAPID_PUBLIC_KEY="
+set "VAPID_PRIVATE_KEY="
+set "VAPID_SUBJECT=mailto:admin@example.com"
 
 echo ========================================================
 echo       Glass Todo 绿色便携版 (Portable Mode)
