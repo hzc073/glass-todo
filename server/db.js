@@ -104,6 +104,53 @@ db.serialize(() => {
     )`);
 
     db.run("CREATE INDEX IF NOT EXISTS idx_attachments_owner_task ON attachments(owner_user_id, task_id)");
+
+    db.run(`CREATE TABLE IF NOT EXISTS checklists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+    )`);
+    db.run("CREATE INDEX IF NOT EXISTS idx_checklists_owner ON checklists(owner)");
+
+    db.run(`CREATE TABLE IF NOT EXISTS checklist_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        list_id INTEGER NOT NULL,
+        owner TEXT NOT NULL,
+        column_id INTEGER,
+        title TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0,
+        completed_by TEXT,
+        subtasks_json TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY(list_id) REFERENCES checklists(id) ON DELETE CASCADE
+    )`);
+    db.run("CREATE INDEX IF NOT EXISTS idx_checklist_items_owner_list ON checklist_items(owner, list_id)");
+
+    db.run(`CREATE TABLE IF NOT EXISTS checklist_columns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        list_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY(list_id) REFERENCES checklists(id) ON DELETE CASCADE
+    )`);
+    db.run("CREATE INDEX IF NOT EXISTS idx_checklist_columns_list ON checklist_columns(list_id)");
+
+    db.run(`CREATE TABLE IF NOT EXISTS checklist_shares (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        list_id INTEGER NOT NULL,
+        owner TEXT NOT NULL,
+        shared_user TEXT NOT NULL,
+        can_edit INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        UNIQUE(list_id, shared_user),
+        FOREIGN KEY(list_id) REFERENCES checklists(id) ON DELETE CASCADE
+    )`);
+    db.run("CREATE INDEX IF NOT EXISTS idx_checklist_shares_user ON checklist_shares(shared_user)");
     
     // 自动迁移：检查 is_admin 字段
     db.all("PRAGMA table_info(users)", (err, rows) => {
@@ -126,6 +173,30 @@ db.serialize(() => {
         if (!rows.some(r => r.name === 'auto_finish_task')) {
             console.log(">> DB Migration: Adding pomodoro_settings.auto_finish_task column...");
             db.run("ALTER TABLE pomodoro_settings ADD COLUMN auto_finish_task INTEGER NOT NULL DEFAULT 0");
+        }
+    });
+
+    db.all("PRAGMA table_info(checklist_items)", (err, rows) => {
+        if (!rows) return;
+        if (!rows.some(r => r.name === 'completed_by')) {
+            console.log(">> DB Migration: Adding checklist_items.completed_by column...");
+            db.run("ALTER TABLE checklist_items ADD COLUMN completed_by TEXT");
+        }
+        if (!rows.some(r => r.name === 'column_id')) {
+            console.log(">> DB Migration: Adding checklist_items.column_id column...");
+            db.run("ALTER TABLE checklist_items ADD COLUMN column_id INTEGER");
+        }
+        if (!rows.some(r => r.name === 'subtasks_json')) {
+            console.log(">> DB Migration: Adding checklist_items.subtasks_json column...");
+            db.run("ALTER TABLE checklist_items ADD COLUMN subtasks_json TEXT");
+        }
+    });
+
+    db.all("PRAGMA table_info(checklist_shares)", (err, rows) => {
+        if (!rows) return;
+        if (!rows.some(r => r.name === 'can_edit')) {
+            console.log(">> DB Migration: Adding checklist_shares.can_edit column...");
+            db.run("ALTER TABLE checklist_shares ADD COLUMN can_edit INTEGER NOT NULL DEFAULT 1");
         }
     });
 });

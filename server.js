@@ -419,6 +419,487 @@ app.post('/api/data', authenticate, (req, res) => {
     });
 });
 
+// Checklists
+const mapChecklistRow = (row = {}) => ({
+    id: Number(row.id),
+    name: row.name || '',
+    owner: row.owner || row.owner_user || row.owner_username || '',
+    sharedCount: Number(row.shared_count || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+});
+const normalizeChecklistSubtasks = (input) => {
+    if (!Array.isArray(input)) return [];
+    return input
+        .map(s => ({
+            title: String(s?.title || '').trim(),
+            completed: !!s?.completed
+        }))
+        .filter(s => s.title);
+};
+const parseChecklistSubtasks = (raw) => {
+    if (!raw) return [];
+    try {
+        return normalizeChecklistSubtasks(JSON.parse(raw));
+    } catch (e) {
+        return [];
+    }
+};
+const mapChecklistItemRow = (row = {}) => ({
+    id: Number(row.id),
+    listId: Number(row.list_id),
+    columnId: row.column_id === null || row.column_id === undefined ? null : Number(row.column_id),
+    title: row.title || '',
+    completed: !!row.completed,
+    completedBy: row.completed_by || '',
+    subtasks: parseChecklistSubtasks(row.subtasks_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+});
+const getChecklistAccess = async (listId, username) => {
+    const rows = await dbAll(
+        `SELECT c.id, c.name, c.owner, c.created_at, c.updated_at, s.shared_user, s.can_edit
+         FROM checklists c
+         LEFT JOIN checklist_shares s ON s.list_id = c.id AND s.shared_user = ?
+         WHERE c.id = ?`,
+        [username, listId]
+    );
+    const row = rows[0];
+    if (!row) return null;
+    if (row.owner === username) {
+        return { list: row, role: 'owner', canEdit: true };
+    }
+    if (row.shared_user === username) {
+        return {
+            list: row,
+            role: 'shared',
+            canEdit: !!row.can_edit
+        };
+    }
+    return null;
+};
+
+const assertChecklistOwner = async (listId, username) => {
+    const rows = await dbAll(
+        "SELECT id, name, owner, created_at, updated_at FROM checklists WHERE id = ? AND owner = ?",
+        [listId, username]
+    );
+    return rows[0] || null;
+};
+
+app.get('/api/checklists', authenticate, async (req, res) => {
+    try {
+        const rows = await dbAll(
+            `SELECT c.id, c.name, c.owner, c.created_at, c.updated_at,
+                    COUNT(DISTINCT s.shared_user) AS shared_count
+             FROM checklists c
+             LEFT JOIN checklist_shares s ON s.list_id = c.id
+             WHERE c.owner = ? OR s.shared_user = ?
+             GROUP BY c.id, c.name, c.owner, c.created_at, c.updated_at
+             ORDER BY c.created_at ASC`,
+            [req.user.username, req.user.username]
+        );
+        res.json({ lists: rows.map(mapChecklistRow) });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to load checklists' });
+    }
+});
+
+app.post('/api/checklists', authenticate, async (req, res) => {
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+    const now = Date.now();
+    try {
+        const result = await dbRun(
+            "INSERT INTO checklists (owner, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            [req.user.username, name, now, now]
+        );
+        res.json({ success: true, list: { id: result.lastID, name, owner: req.user.username, createdAt: now, updatedAt: now } });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to create checklist' });
+    }
+});
+
+app.patch('/api/checklists/:id', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(listId)) return res.status(400).json({ error: 'Invalid checklist id' });
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+    const now = Date.now();
+    try {
+        const access = await getChecklistAccess(listId, req.user.username);
+        if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
+        if (access.role !== 'owner' && !access.canEdit) return res.status(403).json({ error: '无权编辑该清单' });
+        await dbRun("UPDATE checklists SET name = ?, updated_at = ? WHERE id = ?", [name, now, listId]);
+        res.json({ success: true, list: { id: listId, name, owner: access.list.owner, createdAt: access.list.created_at, updatedAt: now } });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to update checklist' });
+    }
+});
+
+app.delete('/api/checklists/:id', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(listId)) return res.status(400).json({ error: 'Invalid checklist id' });
+    try {
+        const owned = await assertChecklistOwner(listId, req.user.username);
+        if (!owned) return res.status(404).json({ error: '清单不存在或无权限' });
+        await dbRun("DELETE FROM checklist_items WHERE list_id = ?", [listId]);
+        await dbRun("DELETE FROM checklist_shares WHERE list_id = ?", [listId]);
+        await dbRun("DELETE FROM checklist_columns WHERE list_id = ?", [listId]);
+        await dbRun("DELETE FROM checklists WHERE id = ?", [listId]);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to delete checklist' });
+    }
+});
+
+app.get('/api/checklists/:id/columns', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(listId)) return res.status(400).json({ error: 'Invalid checklist id' });
+    try {
+        const access = await getChecklistAccess(listId, req.user.username);
+        if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
+        const rows = await dbAll(
+            "SELECT id, list_id, name, sort_order, created_at, updated_at FROM checklist_columns WHERE list_id = ? ORDER BY sort_order ASC, id ASC",
+            [listId]
+        );
+        res.json({
+            columns: rows.map(r => ({
+                id: Number(r.id),
+                listId: Number(r.list_id),
+                name: r.name || '',
+                sortOrder: Number(r.sort_order) || 0,
+                createdAt: r.created_at,
+                updatedAt: r.updated_at
+            }))
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to load checklist columns' });
+    }
+});
+
+app.post('/api/checklists/:id/columns', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(listId)) return res.status(400).json({ error: 'Invalid checklist id' });
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+    try {
+        const access = await getChecklistAccess(listId, req.user.username);
+        if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
+        if (access.role !== 'owner' && !access.canEdit) return res.status(403).json({ error: '无权编辑该清单' });
+        const rows = await dbAll("SELECT MAX(sort_order) AS max_order FROM checklist_columns WHERE list_id = ?", [listId]);
+        const nextOrder = (rows[0]?.max_order || 0) + 1;
+        const now = Date.now();
+        const result = await dbRun(
+            "INSERT INTO checklist_columns (list_id, name, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            [listId, name, nextOrder, now, now]
+        );
+        res.json({ success: true, column: { id: result.lastID, listId, name, sortOrder: nextOrder, createdAt: now, updatedAt: now } });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to create checklist column' });
+    }
+});
+
+app.patch('/api/checklists/:id/columns/:columnId', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    const columnId = parseInt(req.params.columnId, 10);
+    if (!Number.isFinite(listId) || !Number.isFinite(columnId)) return res.status(400).json({ error: 'Invalid id' });
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+    try {
+        const access = await getChecklistAccess(listId, req.user.username);
+        if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
+        if (access.role !== 'owner' && !access.canEdit) return res.status(403).json({ error: '无权编辑该清单' });
+        const rows = await dbAll(
+            "SELECT id, sort_order, created_at FROM checklist_columns WHERE id = ? AND list_id = ?",
+            [columnId, listId]
+        );
+        const column = rows[0];
+        if (!column) return res.status(404).json({ error: '栏目不存在' });
+        const now = Date.now();
+        await dbRun("UPDATE checklist_columns SET name = ?, updated_at = ? WHERE id = ? AND list_id = ?", [name, now, columnId, listId]);
+        res.json({ success: true, column: { id: columnId, listId, name, sortOrder: Number(column.sort_order) || 0, createdAt: column.created_at, updatedAt: now } });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to update checklist column' });
+    }
+});
+
+app.delete('/api/checklists/:id/columns/:columnId', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    const columnId = parseInt(req.params.columnId, 10);
+    if (!Number.isFinite(listId) || !Number.isFinite(columnId)) return res.status(400).json({ error: 'Invalid id' });
+    try {
+        const access = await getChecklistAccess(listId, req.user.username);
+        if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
+        if (access.role !== 'owner' && !access.canEdit) return res.status(403).json({ error: '无权编辑该清单' });
+        const columns = await dbAll("SELECT id FROM checklist_columns WHERE list_id = ? AND id <> ? ORDER BY sort_order ASC, id ASC", [listId, columnId]);
+        const fallbackId = columns[0]?.id || null;
+        await dbRun("UPDATE checklist_items SET column_id = ? WHERE list_id = ? AND column_id = ?", [fallbackId, listId, columnId]);
+        await dbRun("DELETE FROM checklist_columns WHERE id = ? AND list_id = ?", [columnId, listId]);
+        res.json({ success: true, fallbackColumnId: fallbackId ? Number(fallbackId) : null });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to delete checklist column' });
+    }
+});
+
+app.get('/api/checklists/:id/items', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(listId)) return res.status(400).json({ error: 'Invalid checklist id' });
+    try {
+        const access = await getChecklistAccess(listId, req.user.username);
+        if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
+        const rows = await dbAll(
+            "SELECT id, list_id, column_id, title, completed, completed_by, subtasks_json, created_at, updated_at FROM checklist_items WHERE list_id = ? ORDER BY created_at ASC",
+            [listId]
+        );
+        res.json({ items: rows.map(mapChecklistItemRow) });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to load checklist items' });
+    }
+});
+
+app.post('/api/checklists/:id/items', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(listId)) return res.status(400).json({ error: 'Invalid checklist id' });
+    const title = String(req.body.title || '').trim();
+    if (!title) return res.status(400).json({ error: 'Title is required' });
+    const subtasks = normalizeChecklistSubtasks(req.body.subtasks);
+    const columnId = req.body.columnId === null || req.body.columnId === undefined
+        ? null
+        : parseInt(req.body.columnId, 10);
+    const now = Date.now();
+    try {
+        const access = await getChecklistAccess(listId, req.user.username);
+        if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
+        if (!access.canEdit) return res.status(403).json({ error: '无权编辑该清单' });
+        let targetColumnId = Number.isFinite(columnId) ? columnId : null;
+        if (targetColumnId !== null) {
+            const cols = await dbAll("SELECT id FROM checklist_columns WHERE id = ? AND list_id = ?", [targetColumnId, listId]);
+            if (!cols.length) targetColumnId = null;
+        }
+        if (targetColumnId === null) {
+            const cols = await dbAll("SELECT id FROM checklist_columns WHERE list_id = ? ORDER BY sort_order ASC, id ASC LIMIT 1", [listId]);
+            if (cols.length) targetColumnId = cols[0].id;
+        }
+        const allSubtasksDone = subtasks.length ? subtasks.every(s => s.completed) : false;
+        const result = await dbRun(
+            "INSERT INTO checklist_items (list_id, owner, column_id, title, completed, completed_by, subtasks_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                listId,
+                access.list.owner,
+                targetColumnId,
+                title,
+                allSubtasksDone ? 1 : 0,
+                allSubtasksDone ? req.user.username : null,
+                JSON.stringify(subtasks),
+                now,
+                now
+            ]
+        );
+        res.json({
+            success: true,
+            item: {
+                id: result.lastID,
+                listId,
+                columnId: targetColumnId,
+                title,
+                completed: allSubtasksDone,
+                completedBy: allSubtasksDone ? req.user.username : '',
+                subtasks,
+                createdAt: now,
+                updatedAt: now
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to create checklist item' });
+    }
+});
+
+app.patch('/api/checklists/:id/items/:itemId', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    const itemId = parseInt(req.params.itemId, 10);
+    if (!Number.isFinite(listId) || !Number.isFinite(itemId)) return res.status(400).json({ error: 'Invalid id' });
+    const title = typeof req.body.title === 'string' ? req.body.title.trim() : undefined;
+    const completed = typeof req.body.completed === 'boolean' ? req.body.completed : undefined;
+    const subtasks = req.body.subtasks !== undefined ? normalizeChecklistSubtasks(req.body.subtasks) : undefined;
+    const columnId = req.body.columnId === null || req.body.columnId === undefined
+        ? undefined
+        : parseInt(req.body.columnId, 10);
+    if (title === undefined && completed === undefined && columnId === undefined && subtasks === undefined) {
+        return res.status(400).json({ error: 'No changes' });
+    }
+    const now = Date.now();
+    try {
+        const access = await getChecklistAccess(listId, req.user.username);
+        if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
+        const editingTitle = title !== undefined;
+        if (editingTitle && !access.canEdit) return res.status(403).json({ error: '无权编辑该清单' });
+        const rows = await dbAll(
+            "SELECT id, list_id, column_id, title, completed, completed_by, subtasks_json, created_at, updated_at FROM checklist_items WHERE id = ? AND list_id = ?",
+            [itemId, listId]
+        );
+        const current = rows[0];
+        if (!current) return res.status(404).json({ error: 'Item not found' });
+        const nextTitle = title !== undefined ? title : current.title;
+        let nextSubtasks = subtasks !== undefined ? subtasks : parseChecklistSubtasks(current.subtasks_json);
+        let nextCompleted = completed !== undefined ? (completed ? 1 : 0) : current.completed;
+        let nextCompletedBy = completed !== undefined
+            ? (completed ? req.user.username : null)
+            : current.completed_by || null;
+        let nextColumnId = current.column_id;
+        if (completed !== undefined && nextSubtasks.length) {
+            nextSubtasks = nextSubtasks.map(s => ({ ...s, completed: !!completed }));
+        } else if (subtasks !== undefined && completed === undefined && nextSubtasks.length) {
+            const allDone = nextSubtasks.every(s => s.completed);
+            nextCompleted = allDone ? 1 : 0;
+            nextCompletedBy = allDone ? req.user.username : null;
+        }
+        if (columnId !== undefined) {
+            if (Number.isFinite(columnId)) {
+                const cols = await dbAll("SELECT id FROM checklist_columns WHERE id = ? AND list_id = ?", [columnId, listId]);
+                if (cols.length) nextColumnId = columnId;
+            } else {
+                nextColumnId = null;
+            }
+        }
+        await dbRun(
+            "UPDATE checklist_items SET title = ?, completed = ?, completed_by = ?, column_id = ?, subtasks_json = ?, updated_at = ? WHERE id = ? AND list_id = ?",
+            [nextTitle, nextCompleted, nextCompletedBy, nextColumnId, JSON.stringify(nextSubtasks), now, itemId, listId]
+        );
+        res.json({
+            success: true,
+            item: {
+                id: itemId,
+                listId,
+                columnId: nextColumnId === null ? null : Number(nextColumnId),
+                title: nextTitle,
+                completed: !!nextCompleted,
+                completedBy: nextCompletedBy || '',
+                subtasks: nextSubtasks,
+                createdAt: current.created_at,
+                updatedAt: now
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to update item' });
+    }
+});
+
+app.delete('/api/checklists/:id/items/:itemId', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    const itemId = parseInt(req.params.itemId, 10);
+    if (!Number.isFinite(listId) || !Number.isFinite(itemId)) return res.status(400).json({ error: 'Invalid id' });
+    try {
+        const access = await getChecklistAccess(listId, req.user.username);
+        if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
+        if (!access.canEdit) return res.status(403).json({ error: '无权删除该清单的条目' });
+        const rows = await dbAll(
+            "SELECT id FROM checklist_items WHERE id = ? AND list_id = ?",
+            [itemId, listId]
+        );
+        if (!rows.length) return res.status(404).json({ error: 'Item not found' });
+        await dbRun("DELETE FROM checklist_items WHERE id = ? AND list_id = ?", [itemId, listId]);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to delete item' });
+    }
+});
+
+app.get('/api/checklists/:id/shares', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(listId)) return res.status(400).json({ error: 'Invalid checklist id' });
+    try {
+        const owned = await assertChecklistOwner(listId, req.user.username);
+        if (owned) {
+            const rows = await dbAll(
+                "SELECT shared_user, can_edit, created_at FROM checklist_shares WHERE list_id = ? ORDER BY created_at ASC",
+                [listId]
+            );
+            return res.json({
+                owner: owned.owner,
+                shared: rows.map(r => ({
+                    user: r.shared_user,
+                    canEdit: !!r.can_edit,
+                    createdAt: r.created_at
+                }))
+            });
+        }
+        const access = await getChecklistAccess(listId, req.user.username);
+        if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
+        if (access.role !== 'shared') return res.json({ owner: access.list.owner, shared: [], readonly: true });
+        return res.json({
+            owner: access.list.owner,
+            readonly: true,
+            shared: [{
+                user: req.user.username,
+                canEdit: !!access.canEdit,
+                createdAt: access.list.created_at
+            }]
+        });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to load shares' });
+    }
+});
+
+app.post('/api/checklists/:id/shares', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(listId)) return res.status(400).json({ error: 'Invalid checklist id' });
+    const sharedUser = String(req.body.user || '').trim();
+    if (!sharedUser) return res.status(400).json({ error: 'User is required' });
+    const canEdit = typeof req.body.canEdit === 'boolean' ? req.body.canEdit : true;
+    const now = Date.now();
+    try {
+        const owned = await assertChecklistOwner(listId, req.user.username);
+        if (!owned) return res.status(404).json({ error: '清单不存在或无权限' });
+        if (sharedUser === req.user.username) return res.status(400).json({ error: '不能分享给自己' });
+        const userRows = await dbAll("SELECT username FROM users WHERE username = ?", [sharedUser]);
+        if (!userRows.length) return res.status(404).json({ error: '用户不存在' });
+        await dbRun(
+            "INSERT OR REPLACE INTO checklist_shares (list_id, owner, shared_user, can_edit, created_at) VALUES (?, ?, ?, ?, ?)",
+            [listId, req.user.username, sharedUser, canEdit ? 1 : 0, now]
+        );
+        res.json({ success: true, user: sharedUser, canEdit, createdAt: now });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to share checklist' });
+    }
+});
+
+app.patch('/api/checklists/:id/shares/:user', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(listId)) return res.status(400).json({ error: 'Invalid checklist id' });
+    const user = String(req.params.user || '').trim();
+    if (!user) return res.status(400).json({ error: 'Invalid user' });
+    const canEdit = typeof req.body.canEdit === 'boolean' ? req.body.canEdit : undefined;
+    if (canEdit === undefined) return res.status(400).json({ error: 'No changes' });
+    try {
+        const owned = await assertChecklistOwner(listId, req.user.username);
+        if (!owned) return res.status(404).json({ error: '清单不存在或无权限' });
+        const rows = await dbAll("SELECT id, can_edit FROM checklist_shares WHERE list_id = ? AND shared_user = ?", [listId, user]);
+        const share = rows[0];
+        if (!share) return res.status(404).json({ error: '共享用户不存在' });
+        const nextEdit = canEdit === undefined ? share.can_edit : (canEdit ? 1 : 0);
+        await dbRun("UPDATE checklist_shares SET can_edit = ? WHERE list_id = ? AND shared_user = ?", [nextEdit, listId, user]);
+        res.json({ success: true, user, canEdit: !!nextEdit });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to update share' });
+    }
+});
+
+app.delete('/api/checklists/:id/shares/:user', authenticate, async (req, res) => {
+    const listId = parseInt(req.params.id, 10);
+    if (!Number.isFinite(listId)) return res.status(400).json({ error: 'Invalid checklist id' });
+    const user = String(req.params.user || '').trim();
+    if (!user) return res.status(400).json({ error: 'Invalid user' });
+    try {
+        const owned = await assertChecklistOwner(listId, req.user.username);
+        if (!owned) return res.status(404).json({ error: '清单不存在或无权限' });
+        await dbRun("DELETE FROM checklist_shares WHERE list_id = ? AND shared_user = ?", [listId, user]);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to remove share' });
+    }
+});
+
 // Attachments
 app.post('/api/tasks/:taskId/attachments', authenticate, (req, res) => {
     attachmentUpload.single('file')(req, res, async (err) => {

@@ -61,6 +61,51 @@
         </div>
     </div>
 
+    <!-- 清单共享 Modal -->
+    <div id="checklist-share-modal">
+        <div class="modal-box" style="max-width:420px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">清单共享</h3>
+                <button class="btn-text" onclick="app.closeChecklistShareModal()">✕</button>
+            </div>
+            <div style="margin-bottom:12px; color:#666;">清单：<span id="checklist-share-name" style="font-weight:700; color:#222;">--</span></div>
+            <div id="checklist-share-form" class="form-group" style="margin-bottom:12px;">
+                <label class="form-label">添加用户</label>
+                <div class="share-form">
+                    <input type="text" id="checklist-share-user" class="form-input share-input" placeholder="输入用户名">
+                    <button class="btn btn-sm share-action" type="button" onclick="app.addChecklistShare()">共享</button>
+                </div>
+            </div>
+            <div id="checklist-share-perms" class="form-group" style="margin-bottom:12px; display:flex; gap:12px;">
+                <label><input type="checkbox" id="share-can-edit" checked> 可编辑</label>
+            </div>
+            <div id="checklist-share-list" style="max-height:160px; overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <!-- 清单事项 Modal -->
+    <div id="checklist-item-modal" style="position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.4); backdrop-filter:blur(5px); display:none; align-items:center; justify-content:center;">
+        <div class="modal-box" style="max-width:480px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">清单事项</h3>
+                <button class="btn-text" onclick="app.closeChecklistItemModal()">✕</button>
+            </div>
+            <div class="form-group">
+                <label class="form-label">事项名称</label>
+                <input type="text" id="checklist-item-title" class="form-input" placeholder="请输入事项名称">
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label">子任务</label>
+                <div id="checklist-subtask-container"></div>
+                <div style="color:var(--primary); cursor:pointer; font-size:0.85rem; margin-top:6px;" onclick="app.addChecklistSubtaskInput()">+ 添加子任务</div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button class="btn btn-secondary" onclick="app.closeChecklistItemModal()">取消</button>
+                <button class="btn" onclick="app.saveChecklistItemModal()">保存</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast-container"></div>
 
     <!-- 4. 侧边栏 (Desktop) -->
@@ -68,6 +113,7 @@
         <h2 style="color:white; margin-bottom:20px; padding:0 10px;">Glass Todo</h2>
         <div class="nav-section">视图</div>
         <div class="nav-item active" data-view="tasks" onclick="app.switchView('tasks')"><span>📝</span> 任务列表</div>
+        <div class="nav-item" data-view="checklists" onclick="app.switchView('checklists')"><span>🗒️</span> 清单</div>
         <div class="nav-item" data-view="calendar" onclick="app.switchView('calendar')"><span>📅</span> 日历视图</div>
         <div class="nav-item" data-view="matrix" onclick="app.switchView('matrix')"><span>💠</span> 四象限</div>
         <div class="nav-item" data-view="pomodoro" onclick="app.switchView('pomodoro')"><span>🍅</span> 番茄钟</div>
@@ -84,6 +130,7 @@
     <!-- 5. 底部 Tab (Mobile) -->
     <nav id="mobile-tabbar">
         <div class="tab-item active" data-view="tasks" onclick="app.switchView('tasks')"><div>📝</div><div style="font-size:0.6rem">列表</div></div>
+        <div class="tab-item" data-view="checklists" onclick="app.switchView('checklists')"><div>🗒️</div><div style="font-size:0.6rem">清单</div></div>
         <div class="tab-item" data-view="calendar" onclick="app.switchView('calendar')"><div>📅</div><div style="font-size:0.6rem">日历</div></div>
         <div class="tab-item" data-view="matrix" onclick="app.switchView('matrix')"><div>💠</div><div style="font-size:0.6rem">象限</div></div>
         <div class="tab-item" data-view="pomodoro" onclick="app.switchView('pomodoro')"><div>🍅</div><div style="font-size:0.6rem">番茄</div></div>
@@ -341,6 +388,32 @@
         <div id="view-recycle" class="view-container">
             <h4 style="margin-bottom:10px">回收站（7天自动清理）</h4>
             <div id="recycle-list"></div>
+        </div>
+
+        <!-- 视图: 清单 -->
+        <div id="view-checklists" class="view-container">
+            <div class="checklist-layout">
+                <div class="checklist-nav">
+                    <div class="checklist-nav-header">
+                        <div>
+                            <div class="checklist-nav-title">清单</div>
+                            <div class="checklist-nav-subtitle">独立于任务的数据</div>
+                        </div>
+                        <button class="btn-icon" type="button" onclick="app.promptCreateChecklist()" title="新建清单">+</button>
+                    </div>
+                    <div id="checklist-list" class="checklist-nav-list"></div>
+                </div>
+                <div class="checklist-content">
+                    <div class="checklist-content-header">
+                        <div>
+                            <div id="checklist-active-name" class="checklist-content-title">请选择清单</div>
+                            <div class="checklist-content-subtitle">左侧选择清单，右侧编辑条目</div>
+                        </div>
+                        <button id="checklist-add-btn" class="btn-icon" type="button" title="新建栏目" onclick="app.promptCreateChecklistColumn()">+</button>
+                    </div>
+                    <div id="checklist-items" class="checklist-items"></div>
+                </div>
+            </div>
         </div>
 
         <!-- 视图: 设置 -->

@@ -38,6 +38,21 @@ class TodoApp {
         this.dragActive = false;
         this.dragEndAt = 0;
         this.mobileTaskIndex = 0;
+        this.checklists = [];
+        this.checklistItems = {};
+        this.checklistColumns = {};
+        this.activeChecklistId = null;
+        this.checklistsLoaded = false;
+        this.checklistsLoading = false;
+        this.checklistActionOpenId = null;
+        this.checklistShares = {};
+        this.checklistShareModalListId = null;
+        this.checklistMenuPos = null;
+        this.checklistShareReadonly = false;
+        this.loadingChecklistId = null;
+        this.checklistItemModalListId = null;
+        this.checklistItemModalColumnId = null;
+        this.checklistItemModalItemId = null;
         this.pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
         this.pushEnabled = false;
         this.pushSubscription = null;
@@ -91,6 +106,7 @@ class TodoApp {
             document.getElementById('login-modal').style.display = 'none';
             document.getElementById('current-user').innerText = api.user;
             await this.loadData();
+            await this.loadChecklists();
             await this.syncPushSubscription();
         } else {
             document.getElementById('login-modal').style.display = 'flex';
@@ -348,6 +364,7 @@ class TodoApp {
                 document.getElementById('login-modal').style.display = 'none';
                 document.getElementById('current-user').innerText = u;
                 await this.loadData();
+                await this.loadChecklists();
                 await this.syncPushSubscription();
                 await this.initPomodoro();
                 await this.loadUserSettings();
@@ -383,6 +400,20 @@ class TodoApp {
         this.isLoggingOut = true;
         api.clearAuth();
         this.isAdmin = false;
+        this.checklists = [];
+        this.checklistItems = {};
+        this.checklistColumns = {};
+        this.activeChecklistId = null;
+        this.checklistsLoaded = false;
+        this.checklistActionOpenId = null;
+        this.checklistShares = {};
+        this.checklistShareModalListId = null;
+        this.checklistShareReadonly = false;
+        this.checklistItemModalListId = null;
+        this.checklistItemModalColumnId = null;
+        this.checklistItemModalItemId = null;
+        const checklistItemModal = document.getElementById('checklist-item-modal');
+        if (checklistItemModal) checklistItemModal.style.display = 'none';
         const adminBtn = document.getElementById('admin-btn');
         if (adminBtn) adminBtn.style.display = 'none';
         const loginModal = document.getElementById('login-modal');
@@ -489,6 +520,7 @@ class TodoApp {
         document.getElementById('calendar-controls').style.display = v === 'calendar' ? 'flex' : 'none';
         if (v === 'calendar') this.calendar.setMode(this.calendarDefaultMode);
         if (v === 'settings') this.showSettingsSection(this.activeSettingsSection, { updateHash: false });
+        if (v === 'checklists' && !this.checklistsLoaded) this.loadChecklists();
         
         this.render();
         if (v === 'tasks') this.applyTaskSwipePosition();
@@ -902,6 +934,54 @@ class TodoApp {
             this.showToast(`已移动到 ${dateStr}`);
         }
     }
+
+    // 清单拖拽
+    startChecklistDrag(ev, listId, itemId) {
+        if (!ev?.dataTransfer) return;
+        this.dragActive = true;
+        this.dragEndAt = 0;
+        const payload = JSON.stringify({ type: 'checklist-item', listId, itemId });
+        ev.dataTransfer.setData('text/plain', payload);
+        ev.dataTransfer.effectAllowed = 'move';
+        ev.currentTarget?.classList.add('dragging');
+    }
+    allowChecklistDrop(ev) {
+        ev.preventDefault();
+        ev.currentTarget?.classList.add('is-drop-target');
+        if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+    }
+    leaveChecklistDrop(ev) {
+        ev.currentTarget?.classList.remove('is-drop-target');
+    }
+    async dropChecklistItem(ev, targetColumnId) {
+        ev.preventDefault();
+        ev.currentTarget?.classList.remove('is-drop-target');
+        const raw = ev.dataTransfer?.getData('text/plain') || '';
+        let payload = null;
+        try { payload = JSON.parse(raw); } catch (e) { payload = null; }
+        if (!payload || payload.type !== 'checklist-item') return;
+        const listId = Number(payload.listId);
+        const itemId = Number(payload.itemId);
+        if (!Number.isFinite(listId) || !Number.isFinite(itemId)) return;
+        if (Number(this.activeChecklistId) !== Number(listId)) return;
+        const items = this.checklistItems[listId] || [];
+        const current = items.find(it => Number(it.id) === Number(itemId));
+        if (!current || Number(current.columnId) === Number(targetColumnId)) return this.finishDrag();
+        try {
+            const json = await api.updateChecklistItem(listId, itemId, { columnId: targetColumnId });
+            if (json?.item) {
+                this.checklistItems[listId] = items.map(it => Number(it.id) === Number(itemId) ? { ...it, columnId: json.item.columnId } : it);
+                this.renderChecklistsView();
+            } else if (json?.error) {
+                this.showToast(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('移动失败');
+        } finally {
+            this.finishDrag();
+        }
+    }
     
     // 代理日历设置 (HTML onclick)
     toggleCalSetting(key) { this.calendar.toggleSetting(key); }
@@ -909,6 +989,10 @@ class TodoApp {
     // --- 渲染分发 ---
     render() {
         this.updateDateDisplay();
+        if (this.view === 'checklists') {
+            this.renderChecklistsView();
+            return;
+        }
         const allTasks = this.getFilteredData();
         const inboxTasks = allTasks.filter(t => this.isInboxTask(t));
         const datedTasks = allTasks.filter(t => !this.isInboxTask(t));
@@ -963,6 +1047,687 @@ class TodoApp {
         if (this.view === 'recycle') {
             this.renderRecycle(deletedTasks);
         }
+    }
+
+    getActiveChecklist() {
+        return this.checklists.find(l => Number(l.id) === Number(this.activeChecklistId));
+    }
+
+    async loadChecklists() {
+        if (!api.auth && !api.isLocalMode()) return;
+        this.checklistsLoading = true;
+        this.renderChecklistsView();
+        try {
+            const json = await api.getChecklists();
+            this.checklists = Array.isArray(json?.lists) ? json.lists : [];
+            if (!this.activeChecklistId && this.checklists.length) this.activeChecklistId = this.checklists[0].id;
+            this.checklistsLoaded = true;
+            if (this.activeChecklistId) {
+                await this.loadChecklistColumns(this.activeChecklistId);
+                await this.loadChecklistItems(this.activeChecklistId);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('清单加载失败');
+        } finally {
+            this.checklistsLoading = false;
+            this.renderChecklistsView();
+        }
+    }
+
+    async selectChecklist(listId) {
+        if (!Number.isFinite(Number(listId))) return;
+        const changed = Number(this.activeChecklistId) !== Number(listId);
+        this.activeChecklistId = listId;
+        if (!this.checklistColumns[listId] || changed) await this.loadChecklistColumns(listId);
+        if (!this.checklistItems[listId] || changed) await this.loadChecklistItems(listId);
+        this.checklistActionOpenId = null;
+        this.renderChecklistsView();
+    }
+
+    async loadChecklistItems(listId) {
+        if (!api.auth && !api.isLocalMode()) return;
+        if (!Number.isFinite(Number(listId))) return;
+        this.loadingChecklistId = listId;
+        this.renderChecklistsView();
+        try {
+            const json = await api.getChecklistItems(listId);
+            this.checklistItems[listId] = Array.isArray(json?.items) ? json.items : [];
+        } catch (e) {
+            console.error(e);
+            this.showToast('加载清单条目失败');
+        } finally {
+            this.loadingChecklistId = null;
+            this.renderChecklistsView();
+        }
+    }
+
+    async loadChecklistColumns(listId) {
+        if (!api.auth && !api.isLocalMode()) return;
+        if (!Number.isFinite(Number(listId))) return;
+        try {
+            const json = await api.getChecklistColumns(listId);
+            this.checklistColumns[listId] = Array.isArray(json?.columns) ? json.columns : [];
+        } catch (e) {
+            console.error(e);
+            this.showToast('加载栏目失败');
+        }
+    }
+
+    openChecklistMenu(listId, e) {
+        if (e) e.stopPropagation();
+        if (this.checklistActionOpenId === listId) {
+            this.checklistActionOpenId = null;
+            this.checklistMenuPos = null;
+            this.renderChecklistsView();
+            return;
+        }
+        const btn = e?.currentTarget || e?.target;
+        const rect = btn?.getBoundingClientRect ? btn.getBoundingClientRect() : null;
+        if (rect) {
+            const menuWidth = 160;
+            const sidebar = document.getElementById('sidebar');
+            const sidebarRect = sidebar?.getBoundingClientRect ? sidebar.getBoundingClientRect() : null;
+            const sidebarLeft = sidebarRect ? (sidebarRect.left + window.scrollX) : 8;
+            const sidebarRight = sidebarRect ? (sidebarRect.right + window.scrollX - 8) : (window.scrollX + window.innerWidth / 3);
+            const preferredLeft = rect.left + window.scrollX; // align to button left
+            const maxLeft = sidebarRight - menuWidth;
+            const left = Math.max(sidebarLeft + 4, Math.min(preferredLeft, maxLeft));
+            const top = rect.bottom + window.scrollY + 6;
+            this.checklistMenuPos = { top, left };
+        } else {
+            this.checklistMenuPos = null;
+        }
+        this.checklistActionOpenId = listId;
+        this.renderChecklistsView();
+    }
+    closeChecklistMenu() {
+        if (this.checklistActionOpenId !== null) {
+            this.checklistActionOpenId = null;
+            this.checklistMenuPos = null;
+            this.renderChecklistsView();
+        }
+    }
+
+    async promptCreateChecklist() {
+        const name = prompt('清单名称');
+        if (name === null) return;
+        const trimmed = name.trim();
+        if (!trimmed) return this.showToast('名称不能为空');
+        try {
+            const json = await api.createChecklist(trimmed);
+            if (json?.list) {
+                this.checklists.push(json.list);
+                this.checklistItems[json.list.id] = [];
+                this.activeChecklistId = json.list.id;
+                this.checklistsLoaded = true;
+                this.renderChecklistsView();
+            } else if (json?.error) {
+                this.showToast(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('创建清单失败');
+        }
+    }
+
+    async promptRenameChecklist(listId) {
+        const target = this.checklists.find(l => Number(l.id) === Number(listId));
+        if (!target) return;
+        const name = prompt('重命名清单', target.name || '');
+        if (name === null) return;
+        const trimmed = name.trim();
+        if (!trimmed) return this.showToast('名称不能为空');
+        try {
+            const json = await api.renameChecklist(listId, trimmed);
+            if (json?.list) {
+                this.checklists = this.checklists.map(l => Number(l.id) === Number(listId) ? { ...l, name: trimmed, updatedAt: json.list.updatedAt || Date.now() } : l);
+                this.renderChecklistsView();
+            } else if (json?.error) {
+                this.showToast(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('重命名失败');
+        }
+    }
+
+    async promptCreateChecklistColumn() {
+        const active = this.getActiveChecklist();
+        if (!active) return this.showToast('请先新建清单');
+        const name = prompt('栏目名称');
+        if (name === null) return;
+        const trimmed = name.trim();
+        if (!trimmed) return this.showToast('名称不能为空');
+        try {
+            const json = await api.createChecklistColumn(active.id, trimmed);
+            if (json?.column) {
+                const listId = active.id;
+                const cols = this.checklistColumns[listId] || [];
+                this.checklistColumns[listId] = [...cols, json.column];
+                this.renderChecklistsView();
+            } else if (json?.error) {
+                this.showToast(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('创建栏目失败');
+        }
+    }
+
+    async promptRenameChecklistColumn(listId, columnId) {
+        const cols = this.checklistColumns[listId] || [];
+        const target = cols.find(c => Number(c.id) === Number(columnId));
+        if (!target) return;
+        const name = prompt('重命名栏目', target.name || '');
+        if (name === null) return;
+        const trimmed = name.trim();
+        if (!trimmed) return this.showToast('名称不能为空');
+        try {
+            const json = await api.renameChecklistColumn(listId, columnId, trimmed);
+            if (json?.column) {
+                this.checklistColumns[listId] = cols.map(c => Number(c.id) === Number(columnId) ? { ...c, name: trimmed } : c);
+                this.renderChecklistsView();
+            } else if (json?.error) {
+                this.showToast(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('重命名栏目失败');
+        }
+    }
+
+    async deleteChecklistColumn(listId, columnId) {
+        if (!confirm('确认删除该栏目吗？栏目内的事项将移动到其他栏目')) return;
+        try {
+            const json = await api.deleteChecklistColumn(listId, columnId);
+            if (json?.success) {
+                const cols = this.checklistColumns[listId] || [];
+                this.checklistColumns[listId] = cols.filter(c => Number(c.id) !== Number(columnId));
+                const items = this.checklistItems[listId] || [];
+                this.checklistItems[listId] = items.map(item => {
+                    if (Number(item.columnId) !== Number(columnId)) return item;
+                    return { ...item, columnId: json.fallbackColumnId ?? null };
+                });
+                this.renderChecklistsView();
+            } else if (json?.error) {
+                this.showToast(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('删除栏目失败');
+        }
+    }
+
+    async openChecklistShareModal(listId, e) {
+        if (e) e.stopPropagation();
+        if (api.isLocalMode()) {
+            this.showToast('本地模式不支持共享');
+            return;
+        }
+        this.checklistShareModalListId = listId;
+        this.checklistShareReadonly = false;
+        const modal = document.getElementById('checklist-share-modal');
+        if (modal) modal.style.display = 'flex';
+        const input = document.getElementById('checklist-share-user');
+        if (input) input.value = '';
+        await this.loadChecklistShares(listId);
+        this.renderChecklistShareModal();
+    }
+
+    closeChecklistShareModal() {
+        const modal = document.getElementById('checklist-share-modal');
+        if (modal) modal.style.display = 'none';
+        this.checklistShareModalListId = null;
+        this.checklistShareReadonly = false;
+    }
+
+    async loadChecklistShares(listId) {
+        if (!Number.isFinite(Number(listId))) return;
+        try {
+            const json = await api.getChecklistShares(listId);
+            if (json?.shared) this.checklistShares[listId] = json.shared;
+            this.checklistShareReadonly = !!json?.readonly;
+        } catch (e) {
+            console.error(e);
+            this.showToast('加载共享用户失败');
+        }
+    }
+
+    async addChecklistShare() {
+        if (!this.checklistShareModalListId) return;
+        const input = document.getElementById('checklist-share-user');
+        const user = input ? input.value.trim() : '';
+        if (!user) return this.showToast('请输入用户名');
+        const canEdit = document.getElementById('share-can-edit')?.checked ?? true;
+        try {
+            const json = await api.addChecklistShare(this.checklistShareModalListId, user, { canEdit });
+            if (json?.success) {
+                const listId = this.checklistShareModalListId;
+                const arr = this.checklistShares[listId] || [];
+                this.checklistShares[listId] = [...arr, { user: json.user, canEdit: !!json.canEdit, createdAt: json.createdAt }];
+                if (input) input.value = '';
+                const editBox = document.getElementById('share-can-edit');
+                if (editBox) editBox.checked = true;
+                this.renderChecklistShareModal();
+            } else if (json?.error) {
+                this.showToast(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('共享失败');
+        }
+    }
+
+    async removeChecklistShare(listId, user) {
+        if (!Number.isFinite(Number(listId)) || !user) return;
+        if (api.isLocalMode()) {
+            this.showToast('本地模式不支持共享');
+            return;
+        }
+        try {
+            const res = await api.deleteChecklistShare(listId, user);
+            if (res?.success) {
+                const arr = this.checklistShares[listId] || [];
+                this.checklistShares[listId] = arr.filter(s => s.user !== user);
+                this.renderChecklistShareModal();
+            } else if (res?.error) {
+                this.showToast(res.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('取消共享失败');
+        }
+    }
+
+    async updateChecklistShare(listId, user, payload = {}) {
+        try {
+            const res = await api.updateChecklistShare(listId, user, payload);
+            if (res?.success) {
+                const arr = this.checklistShares[listId] || [];
+                this.checklistShares[listId] = arr.map(s => s.user === user ? { ...s, canEdit: !!res.canEdit } : s);
+                this.renderChecklistShareModal();
+            } else if (res?.error) {
+                this.showToast(res.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('更新权限失败');
+        }
+    }
+
+    isSharedChecklist(list) {
+        if (!list) return false;
+        const owner = list.owner || '';
+        if (owner && api.user && owner !== api.user) return true;
+        if (Number(list.sharedCount) > 0) return true;
+        const shares = this.checklistShares[list.id] || [];
+        return shares.length > 0;
+    }
+
+    renderChecklistShareModal() {
+        const listId = this.checklistShareModalListId;
+        const list = this.checklists.find(l => Number(l.id) === Number(listId));
+        const nameEl = document.getElementById('checklist-share-name');
+        const listEl = document.getElementById('checklist-share-list');
+        const formEl = document.getElementById('checklist-share-form');
+        const permsEl = document.getElementById('checklist-share-perms');
+        if (formEl) formEl.style.display = this.checklistShareReadonly ? 'none' : '';
+        if (permsEl) permsEl.style.display = this.checklistShareReadonly ? 'none' : '';
+        if (nameEl) nameEl.textContent = list ? list.name : '清单';
+        if (!listEl) return;
+        const shared = this.checklistShares[listId] || [];
+        if (!shared.length) {
+            listEl.innerHTML = '<div class="checklist-empty">暂无共享用户</div>';
+            return;
+        }
+        listEl.innerHTML = shared.map(s => `
+            <div class="share-user-row">
+                <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+                    <span>👤 ${this.escapeHtml(s.user)}</span>
+                    <div class="share-perms">
+                        <label><input type="checkbox" ${s.canEdit ? 'checked' : ''} ${this.checklistShareReadonly ? 'disabled' : ''} onchange="app.updateChecklistShare(${listId}, '${this.escapeHtml(s.user)}', { canEdit: this.checked })"> 可编辑</label>
+                    </div>
+                </div>
+                ${this.checklistShareReadonly ? '' : `<button class="btn-text" data-user="${this.escapeHtml(s.user)}" onclick="app.removeChecklistShare(${listId}, this.dataset.user)">取消共享</button>`}
+            </div>
+        `).join('');
+    }
+
+    promptCreateChecklistItem(columnId = null) {
+        this.openChecklistItemModal(columnId, null);
+    }
+
+    openChecklistItemModal(columnId = null, itemId = null) {
+        const active = this.getActiveChecklist();
+        if (!active) return this.showToast('请先新建清单');
+        this.checklistItemModalListId = active.id;
+        this.checklistItemModalColumnId = columnId;
+        this.checklistItemModalItemId = itemId;
+        const modal = document.getElementById('checklist-item-modal');
+        const titleInput = document.getElementById('checklist-item-title');
+        const subtaskBox = document.getElementById('checklist-subtask-container');
+        if (subtaskBox) subtaskBox.innerHTML = '';
+        const items = this.checklistItems[active.id] || [];
+        const current = itemId ? items.find(it => Number(it.id) === Number(itemId)) : null;
+        if (titleInput) titleInput.value = current ? (current.title || '') : '';
+        const subs = current && Array.isArray(current.subtasks) ? current.subtasks : [];
+        if (subs.length) {
+            subs.forEach(s => this.addChecklistSubtaskInput(s.title, s.completed));
+        } else {
+            this.addChecklistSubtaskInput();
+        }
+        if (modal) modal.style.display = 'flex';
+    }
+
+    closeChecklistItemModal() {
+        const modal = document.getElementById('checklist-item-modal');
+        if (modal) modal.style.display = 'none';
+        this.checklistItemModalListId = null;
+        this.checklistItemModalColumnId = null;
+        this.checklistItemModalItemId = null;
+    }
+
+    addChecklistSubtaskInput(val = '', checked = false) {
+        const container = document.getElementById('checklist-subtask-container');
+        if (!container) return;
+        const div = document.createElement('div');
+        div.className = 'checklist-subtask-item';
+        div.innerHTML = `
+            <input type="checkbox" ${checked ? 'checked' : ''}>
+            <input type="text" class="form-input checklist-subtask-input" value="${this.escapeHtml(val)}" placeholder="子任务">
+            <span class="checklist-subtask-remove" onclick="this.parentElement.remove()">×</span>
+        `;
+        container.appendChild(div);
+    }
+
+    collectChecklistSubtasks() {
+        const subs = [];
+        document.querySelectorAll('#checklist-subtask-container .checklist-subtask-item').forEach(item => {
+            const input = item.querySelector('input[type="text"]');
+            const check = item.querySelector('input[type="checkbox"]');
+            const title = input ? input.value.trim() : '';
+            if (title) subs.push({ title, completed: !!check?.checked });
+        });
+        return subs;
+    }
+
+    async saveChecklistItemModal() {
+        const listId = this.checklistItemModalListId;
+        if (!listId) return;
+        const titleInput = document.getElementById('checklist-item-title');
+        const title = titleInput ? titleInput.value.trim() : '';
+        if (!title) return this.showToast('内容不能为空');
+        const subtasks = this.collectChecklistSubtasks();
+        const itemId = this.checklistItemModalItemId;
+        try {
+            if (itemId) {
+                const json = await api.updateChecklistItem(listId, itemId, { title, subtasks });
+                if (json?.item) {
+                    const items = this.checklistItems[listId] || [];
+                    this.checklistItems[listId] = items.map(it => Number(it.id) === Number(itemId) ? { ...it, ...json.item } : it);
+                } else if (json?.error) {
+                    return this.showToast(json.error);
+                }
+            } else {
+                const json = await api.createChecklistItem(listId, title, this.checklistItemModalColumnId, subtasks);
+                if (json?.item) {
+                    const arr = this.checklistItems[listId] || [];
+                    this.checklistItems[listId] = [...arr, json.item];
+                } else if (json?.error) {
+                    return this.showToast(json.error);
+                }
+            }
+            this.closeChecklistItemModal();
+            this.renderChecklistsView();
+        } catch (e) {
+            console.error(e);
+            this.showToast('保存失败');
+        }
+    }
+
+    async toggleChecklistItem(listId, itemId, checked) {
+        try {
+            const items = this.checklistItems[listId] || [];
+            const current = items.find(it => Number(it.id) === Number(itemId));
+            const payload = { completed: !!checked };
+            if (current && Array.isArray(current.subtasks) && current.subtasks.length) {
+                payload.subtasks = current.subtasks.map(s => ({ ...s, completed: !!checked }));
+            }
+            const json = await api.updateChecklistItem(listId, itemId, payload);
+            if (json?.item) {
+                this.checklistItems[listId] = items.map(it => Number(it.id) === Number(itemId) ? {
+                    ...it,
+                    completed: !!checked,
+                    completedBy: json.item.completedBy || (checked ? api.user : ''),
+                    subtasks: json.item.subtasks || it.subtasks,
+                    updatedAt: json.item.updatedAt || Date.now()
+                } : it);
+                this.renderChecklistsView();
+            } else if (json?.error) {
+                this.showToast(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('更新失败');
+            this.renderChecklistsView();
+        }
+    }
+
+    async updateChecklistItemTitle(listId, itemId, title) {
+        const trimmed = (title || '').trim();
+        if (!trimmed) { this.showToast('内容不能为空'); this.renderChecklistsView(); return; }
+        try {
+            const json = await api.updateChecklistItem(listId, itemId, { title: trimmed });
+            if (json?.item) {
+                const items = this.checklistItems[listId] || [];
+                this.checklistItems[listId] = items.map(it => Number(it.id) === Number(itemId) ? { ...it, title: trimmed, updatedAt: json.item.updatedAt || Date.now() } : it);
+                this.renderChecklistsView();
+            } else if (json?.error) {
+                this.showToast(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('更新失败');
+        }
+    }
+
+    async toggleChecklistSubtask(listId, itemId, subIndex) {
+        const items = this.checklistItems[listId] || [];
+        const current = items.find(it => Number(it.id) === Number(itemId));
+        if (!current || !Array.isArray(current.subtasks) || !current.subtasks[subIndex]) return;
+        const nextSubtasks = current.subtasks.map((s, idx) => idx === subIndex ? { ...s, completed: !s.completed } : s);
+        const allDone = nextSubtasks.length ? nextSubtasks.every(s => s.completed) : false;
+        const payload = { subtasks: nextSubtasks };
+        if (allDone !== !!current.completed) payload.completed = allDone;
+        try {
+            const json = await api.updateChecklistItem(listId, itemId, payload);
+            if (json?.item) {
+                this.checklistItems[listId] = items.map(it => Number(it.id) === Number(itemId) ? { ...it, ...json.item } : it);
+                this.renderChecklistsView();
+            } else if (json?.error) {
+                this.showToast(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('更新失败');
+        }
+    }
+
+    async deleteChecklistItem(listId, itemId) {
+        try {
+            const json = await api.deleteChecklistItem(listId, itemId);
+            if (json?.success) {
+                const items = this.checklistItems[listId] || [];
+                this.checklistItems[listId] = items.filter(it => Number(it.id) !== Number(itemId));
+                this.renderChecklistsView();
+            } else if (json?.error) {
+                this.showToast(json.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('删除失败');
+        }
+    }
+
+    async deleteChecklist(listId) {
+        if (!Number.isFinite(Number(listId))) return;
+        if (!confirm('确认删除该清单及其所有条目吗？')) return;
+        try {
+            const res = await api.deleteChecklist(listId);
+            if (res?.success) {
+                this.checklists = this.checklists.filter(l => Number(l.id) !== Number(listId));
+                delete this.checklistItems[listId];
+                delete this.checklistShares[listId];
+                if (Number(this.activeChecklistId) === Number(listId)) {
+                    this.activeChecklistId = this.checklists[0]?.id || null;
+                }
+                this.renderChecklistsView();
+            } else if (res?.error) {
+                this.showToast(res.error);
+            }
+        } catch (e) {
+            console.error(e);
+            this.showToast('删除清单失败');
+        }
+    }
+
+    renderChecklistsView() {
+        const listBox = document.getElementById('checklist-list');
+        const itemsBox = document.getElementById('checklist-items');
+        const titleEl = document.getElementById('checklist-active-name');
+        const addBtn = document.getElementById('checklist-add-btn');
+        if (!listBox || !itemsBox) return;
+
+        if (addBtn) addBtn.disabled = !this.getActiveChecklist();
+
+        if (this.checklistsLoading) {
+            listBox.innerHTML = '<div class="checklist-empty">加载中...</div>';
+        } else if (!this.checklists.length) {
+            listBox.innerHTML = '<div class="checklist-empty">暂无清单，先新建一个吧</div>';
+        } else {
+            listBox.innerHTML = this.checklists.map(l => {
+                const active = Number(l.id) === Number(this.activeChecklistId);
+                const menuOpen = Number(this.checklistActionOpenId) === Number(l.id);
+                const menuStyle = menuOpen && this.checklistMenuPos
+                    ? `style="top:${this.checklistMenuPos.top}px; left:${this.checklistMenuPos.left}px"`
+                    : '';
+                return `
+                    <div class="checklist-nav-item ${active ? 'active' : ''}" onclick="app.selectChecklist(${l.id})">
+                        <div class="checklist-nav-name">
+                            <div>${this.escapeHtml(l.name || '未命名')}</div>
+                            <div class="checklist-nav-owner">${this.isSharedChecklist(l) ? '共享清单' : ''}</div>
+                        </div>
+                        <div class="checklist-nav-actions" onclick="event.stopPropagation()">
+                            <button class="btn-icon btn-ghost" title="操作" onclick="app.openChecklistMenu(${l.id}, event)">⋯</button>
+                            ${menuOpen ? `
+                                <div class="checklist-menu" ${menuStyle}>
+                                    <div class="checklist-menu-item" onclick="app.promptRenameChecklist(${l.id}); app.closeChecklistMenu();">重命名</div>
+                                    <div class="checklist-menu-item" onclick="app.openChecklistShareModal(${l.id}, event); app.closeChecklistMenu();">共享</div>
+                                    <div class="checklist-menu-item checklist-menu-danger" onclick="app.deleteChecklist(${l.id}); app.closeChecklistMenu();">删除</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        const active = this.getActiveChecklist();
+        if (!active) {
+            if (titleEl) titleEl.textContent = '请选择清单';
+            itemsBox.innerHTML = '<div class="checklist-empty">左侧选择或创建清单</div>';
+            return;
+        }
+        if (titleEl) titleEl.textContent = active.name || '未命名清单';
+
+        if (this.loadingChecklistId && Number(this.loadingChecklistId) === Number(active.id)) {
+            itemsBox.innerHTML = '<div class="checklist-empty">加载中...</div>';
+            return;
+        }
+
+        const columns = (this.checklistColumns[active.id] || []).slice().sort((a, b) => {
+            const aOrder = Number(a.sortOrder) || 0;
+            const bOrder = Number(b.sortOrder) || 0;
+            if (aOrder !== bOrder) return aOrder - bOrder;
+            return Number(a.id) - Number(b.id);
+        });
+        if (!columns.length) {
+            itemsBox.innerHTML = '<div class="checklist-empty">还没有栏目，点击右上角 + 新建栏目</div>';
+            return;
+        }
+
+        const items = this.checklistItems[active.id] || [];
+        const fallbackColumnId = columns[0]?.id ?? null;
+        const grouped = {};
+        items.forEach(item => {
+            const key = item.columnId ?? fallbackColumnId;
+            if (key === null || key === undefined) return;
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(item);
+        });
+
+        itemsBox.innerHTML = columns.map(col => {
+            const colItems = grouped[col.id] || [];
+            const totalCount = colItems.length;
+            const doneCount = colItems.reduce((sum, item) => sum + (item.completed ? 1 : 0), 0);
+            const itemsHtml = colItems.length ? colItems.map(item => {
+                const checked = item.completed ? 'checked' : '';
+                const completedClass = item.completed ? 'completed' : '';
+                const completedBy = item.completedBy ? `<span class="checklist-completed-by">完成人: ${this.escapeHtml(item.completedBy)}</span>` : '';
+                const subtaskHtml = Array.isArray(item.subtasks) && item.subtasks.length
+                    ? `
+                        <div class="checklist-subtask-list">
+                            ${item.subtasks.map((sub, idx) => `
+                                <div class="checklist-subtask ${sub.completed ? 'completed' : ''}" onclick="event.stopPropagation(); app.toggleChecklistSubtask(${active.id}, ${item.id}, ${idx})">
+                                    <span class="checklist-subtask-box"></span>
+                                    <span class="checklist-subtask-title">${this.escapeHtml(sub.title || '')}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `
+                    : '';
+                return `
+                    <div class="checklist-item-card">
+                        <div class="checklist-item-row ${completedClass}" draggable="true" ondragstart="app.startChecklistDrag(event, ${active.id}, ${item.id})" ondragend="app.finishDrag()">
+                            <label class="checklist-item-main">
+                                <input type="checkbox" ${checked} onchange="app.toggleChecklistItem(${active.id}, ${item.id}, this.checked)">
+                                <input type="text" value="${this.escapeHtml(item.title || '')}" onchange="app.updateChecklistItemTitle(${active.id}, ${item.id}, this.value)" class="checklist-item-input" placeholder="请输入内容">
+                                ${completedBy}
+                            </label>
+                            <button class="btn-icon btn-ghost" title="子任务" onclick="app.openChecklistItemModal(${item.columnId ?? col.id}, ${item.id})">...</button>
+                            <button class="btn-icon btn-ghost" title="删除" onclick="app.deleteChecklistItem(${active.id}, ${item.id})">×</button>
+                        </div>
+                        ${subtaskHtml}
+                    </div>
+                `;
+            }).join('') : '<div class="checklist-empty">暂无事项</div>';
+            return `
+                <div class="checklist-column" ondragover="app.allowChecklistDrop(event)" ondragleave="app.leaveChecklistDrop(event)" ondrop="app.dropChecklistItem(event, ${col.id})">
+                    <div class="checklist-column-header">
+                        <div class="checklist-column-title">${this.escapeHtml(col.name || '栏目')}</div>
+                        <div class="checklist-column-progress">(${doneCount}/${totalCount})</div>
+                        <div class="checklist-column-actions">
+                            <button class="btn-icon btn-ghost" title="新建事项" onclick="app.promptCreateChecklistItem(${col.id})">+</button>
+                            <button class="btn-icon btn-ghost" title="重命名栏目" onclick="app.promptRenameChecklistColumn(${active.id}, ${col.id})">✎</button>
+                            <button class="btn-icon btn-ghost" title="删除栏目" onclick="app.deleteChecklistColumn(${active.id}, ${col.id})">×</button>
+                        </div>
+                    </div>
+                    <div class="checklist-column-list">
+                        ${itemsHtml}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    escapeHtml(str = '') {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     getDateStamp(dateStr) {
