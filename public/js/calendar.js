@@ -2,9 +2,10 @@ export default class CalendarView {
     constructor(app) {
         this.app = app; // 持有主程序引用以访问数据
         this.mode = 'day'; // day, week, month
-        this.settings = (this.app && this.app.calendarSettings) || { showTime: true, showTags: true, showLunar: true, showHoliday: true };
+        this.settings = (this.app && this.app.calendarSettings) || { showTime: true, showTags: true, showLunar: true, showHoliday: true, timelineStartMinutes: 480 };
         this.resizing = null;
         this.clickTimer = null;
+        this.timelineScrollKey = { day: '', week: '' };
 
         // 绑定拖拽事件监听
         window.addEventListener('mousemove', (e) => this.handleResizeMove(e));
@@ -99,9 +100,39 @@ export default class CalendarView {
             if (switchEl) switchEl.classList.toggle('active', !!this.settings[key]);
         });
     }
+    getTimelineStartMinutes() {
+        const rawMin = this.settings ? this.settings.timelineStartMinutes : undefined;
+        let parsed = Number.parseInt(rawMin, 10);
+        if (!Number.isFinite(parsed)) {
+            const rawHour = this.settings ? this.settings.timelineStartHour : undefined;
+            const hour = Number.parseInt(rawHour, 10);
+            if (Number.isFinite(hour)) parsed = hour * 60;
+        }
+        if (!Number.isFinite(parsed)) parsed = 480;
+        return Math.min(1439, Math.max(0, parsed));
+    }
+    applyTimelineStartScroll(mode, key) {
+        if (!mode || !key || this.timelineScrollKey[mode] === key) return;
+        const startMinutes = this.getTimelineStartMinutes();
+        if (mode === 'day') {
+            const view = document.getElementById('view-calendar');
+            const timeline = document.getElementById('day-timeline');
+            if (view && timeline) {
+                const viewRect = view.getBoundingClientRect();
+                const timelineRect = timeline.getBoundingClientRect();
+                const offsetTop = timelineRect.top - viewRect.top + view.scrollTop;
+                view.scrollTop = offsetTop + startMinutes;
+            }
+        } else if (mode === 'week') {
+            const weekTimeline = document.getElementById('week-timeline');
+            if (weekTimeline) weekTimeline.scrollTop = startMinutes;
+        }
+        this.timelineScrollKey[mode] = key;
+    }
 
     setMode(mode) {
         this.mode = mode;
+        this.timelineScrollKey = { day: '', week: '' };
         document.querySelectorAll('.view-switch-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
         document.getElementById('cal-day-view').style.display = mode === 'day' ? 'block' : 'none';
         document.getElementById('cal-week-view').style.display = mode === 'week' ? 'flex' : 'none';
@@ -220,6 +251,8 @@ export default class CalendarView {
             div.ondblclick = (e) => { e.stopPropagation(); this.handleCalendarDblClick(e, t.id); };
             container.appendChild(div);
         });
+        const dayScrollKey = `${dateStr}|${this.getTimelineStartMinutes()}`;
+        this.applyTimelineStartScroll('day', dayScrollKey);
     }
 
     renderWeek(tasks) {
@@ -364,6 +397,8 @@ export default class CalendarView {
 
             daysEl.appendChild(col);
         }
+        const weekScrollKey = `${this.app.formatDate(start)}|${this.getTimelineStartMinutes()}`;
+        this.applyTimelineStartScroll('week', weekScrollKey);
     }
 
     renderMonth(tasks) {

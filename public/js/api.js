@@ -1,4 +1,29 @@
 ﻿// Simple API wrapper with optional local storage mode.
+const normalizeChecklistSubtasks = (input) => {
+    let raw = input;
+    if (typeof raw === 'string') {
+        try {
+            raw = JSON.parse(raw);
+        } catch (e) {
+            return [];
+        }
+    }
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .map((s) => {
+            if (typeof s === 'string') {
+                return { title: s.trim(), completed: false, note: '' };
+            }
+            const title = String(s?.title || s?.text || s?.name || '').trim();
+            return {
+                title,
+                completed: !!s?.completed,
+                note: String(s?.note || '').trim()
+            };
+        })
+        .filter(s => s.title);
+};
+
 const api = {
     auth: localStorage.getItem('auth') || '',
     user: localStorage.getItem('user') || '',
@@ -263,16 +288,14 @@ const api = {
         const res = await this.request(`/api/checklists/${listId}/columns/${columnId}`, 'DELETE');
         return await res.json();
     },
-    async createChecklistItem(listId, title, columnId = null, subtasks = []) {
+    async createChecklistItem(listId, title, columnId = null, subtasks = [], notes = '') {
         if (this.useLocalStorage) {
             const data = this.loadLocalChecklistData();
             const itemsMap = data.items && typeof data.items === 'object' ? data.items : {};
             const key = itemsMap[listId] ? listId : String(listId);
             const items = itemsMap[key] || [];
             const now = Date.now();
-            const safeSubtasks = Array.isArray(subtasks)
-                ? subtasks.map(s => ({ title: String(s?.title || '').trim(), completed: !!s?.completed })).filter(s => s.title)
-                : [];
+            const safeSubtasks = normalizeChecklistSubtasks(subtasks);
             const allDone = safeSubtasks.length ? safeSubtasks.every(s => s.completed) : false;
             const item = {
                 id: this.genLocalId(),
@@ -281,6 +304,7 @@ const api = {
                 title,
                 completed: allDone,
                 completedBy: allDone ? this.user : '',
+                notes: String(notes || '').trim(),
                 subtasks: safeSubtasks,
                 createdAt: now,
                 updatedAt: now
@@ -290,7 +314,7 @@ const api = {
             this.saveLocalChecklistData(data);
             return { success: true, item };
         }
-        const res = await this.request(`/api/checklists/${listId}/items`, 'POST', { title, columnId, subtasks });
+        const res = await this.request(`/api/checklists/${listId}/items`, 'POST', { title, columnId, subtasks, notes });
         return await res.json();
     },
     async updateChecklistItem(listId, itemId, payload) {
@@ -303,9 +327,7 @@ const api = {
             if (idx === -1) return { success: false, error: 'Not found' };
             const base = items[idx];
             const rawSubtasks = payload.subtasks !== undefined ? payload.subtasks : base.subtasks;
-            const nextSubtasks = Array.isArray(rawSubtasks)
-                ? rawSubtasks.map(s => ({ title: String(s?.title || '').trim(), completed: !!s?.completed })).filter(s => s.title)
-                : [];
+            const nextSubtasks = normalizeChecklistSubtasks(rawSubtasks);
             let nextCompleted = typeof payload.completed === 'boolean' ? payload.completed : base.completed;
             if (payload.completed !== undefined && Array.isArray(nextSubtasks) && nextSubtasks.length) {
                 nextSubtasks.forEach(s => { s.completed = !!payload.completed; });
@@ -320,6 +342,7 @@ const api = {
                     ? (payload.completed ? this.user : '')
                     : (nextCompleted ? this.user : base.completedBy || ''),
                 columnId: payload.columnId !== undefined ? payload.columnId : base.columnId,
+                notes: payload.notes !== undefined ? String(payload.notes || '').trim() : (base.notes || ''),
                 subtasks: nextSubtasks,
                 updatedAt: Date.now()
             };
@@ -334,6 +357,7 @@ const api = {
         if (payload.completed !== undefined) body.completed = payload.completed;
         if (payload.columnId !== undefined) body.columnId = payload.columnId;
         if (payload.subtasks !== undefined) body.subtasks = payload.subtasks;
+        if (payload.notes !== undefined) body.notes = payload.notes;
         const res = await this.request(`/api/checklists/${listId}/items/${itemId}`, 'PATCH', body);
         return await res.json();
     },

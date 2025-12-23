@@ -429,12 +429,27 @@ const mapChecklistRow = (row = {}) => ({
     updatedAt: row.updated_at
 });
 const normalizeChecklistSubtasks = (input) => {
-    if (!Array.isArray(input)) return [];
-    return input
-        .map(s => ({
-            title: String(s?.title || '').trim(),
-            completed: !!s?.completed
-        }))
+    let raw = input;
+    if (typeof raw === 'string') {
+        try {
+            raw = JSON.parse(raw);
+        } catch (e) {
+            return [];
+        }
+    }
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .map((s) => {
+            if (typeof s === 'string') {
+                return { title: s.trim(), completed: false, note: '' };
+            }
+            const title = String(s?.title || s?.text || s?.name || '').trim();
+            return {
+                title,
+                completed: !!s?.completed,
+                note: String(s?.note || '').trim()
+            };
+        })
         .filter(s => s.title);
 };
 const parseChecklistSubtasks = (raw) => {
@@ -452,6 +467,7 @@ const mapChecklistItemRow = (row = {}) => ({
     title: row.title || '',
     completed: !!row.completed,
     completedBy: row.completed_by || '',
+    notes: row.notes || '',
     subtasks: parseChecklistSubtasks(row.subtasks_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -649,7 +665,7 @@ app.get('/api/checklists/:id/items', authenticate, async (req, res) => {
         const access = await getChecklistAccess(listId, req.user.username);
         if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
         const rows = await dbAll(
-            "SELECT id, list_id, column_id, title, completed, completed_by, subtasks_json, created_at, updated_at FROM checklist_items WHERE list_id = ? ORDER BY created_at ASC",
+            "SELECT id, list_id, column_id, title, completed, completed_by, notes, subtasks_json, created_at, updated_at FROM checklist_items WHERE list_id = ? ORDER BY created_at ASC",
             [listId]
         );
         res.json({ items: rows.map(mapChecklistItemRow) });
@@ -664,6 +680,7 @@ app.post('/api/checklists/:id/items', authenticate, async (req, res) => {
     const title = String(req.body.title || '').trim();
     if (!title) return res.status(400).json({ error: 'Title is required' });
     const subtasks = normalizeChecklistSubtasks(req.body.subtasks);
+    const notes = typeof req.body.notes === 'string' ? req.body.notes.trim() : '';
     const columnId = req.body.columnId === null || req.body.columnId === undefined
         ? null
         : parseInt(req.body.columnId, 10);
@@ -683,7 +700,7 @@ app.post('/api/checklists/:id/items', authenticate, async (req, res) => {
         }
         const allSubtasksDone = subtasks.length ? subtasks.every(s => s.completed) : false;
         const result = await dbRun(
-            "INSERT INTO checklist_items (list_id, owner, column_id, title, completed, completed_by, subtasks_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO checklist_items (list_id, owner, column_id, title, completed, completed_by, notes, subtasks_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 listId,
                 access.list.owner,
@@ -691,6 +708,7 @@ app.post('/api/checklists/:id/items', authenticate, async (req, res) => {
                 title,
                 allSubtasksDone ? 1 : 0,
                 allSubtasksDone ? req.user.username : null,
+                notes,
                 JSON.stringify(subtasks),
                 now,
                 now
@@ -705,6 +723,7 @@ app.post('/api/checklists/:id/items', authenticate, async (req, res) => {
                 title,
                 completed: allSubtasksDone,
                 completedBy: allSubtasksDone ? req.user.username : '',
+                notes,
                 subtasks,
                 createdAt: now,
                 updatedAt: now
@@ -722,25 +741,27 @@ app.patch('/api/checklists/:id/items/:itemId', authenticate, async (req, res) =>
     const title = typeof req.body.title === 'string' ? req.body.title.trim() : undefined;
     const completed = typeof req.body.completed === 'boolean' ? req.body.completed : undefined;
     const subtasks = req.body.subtasks !== undefined ? normalizeChecklistSubtasks(req.body.subtasks) : undefined;
+    const notes = typeof req.body.notes === 'string' ? req.body.notes.trim() : undefined;
     const columnId = req.body.columnId === null || req.body.columnId === undefined
         ? undefined
         : parseInt(req.body.columnId, 10);
-    if (title === undefined && completed === undefined && columnId === undefined && subtasks === undefined) {
+    if (title === undefined && completed === undefined && columnId === undefined && subtasks === undefined && notes === undefined) {
         return res.status(400).json({ error: 'No changes' });
     }
     const now = Date.now();
     try {
         const access = await getChecklistAccess(listId, req.user.username);
         if (!access) return res.status(404).json({ error: '清单不存在或无权限' });
-        const editingTitle = title !== undefined;
-        if (editingTitle && !access.canEdit) return res.status(403).json({ error: '无权编辑该清单' });
+    const editingTitle = title !== undefined;
+    if ((editingTitle || notes !== undefined) && !access.canEdit) return res.status(403).json({ error: '无权编辑该清单' });
         const rows = await dbAll(
-            "SELECT id, list_id, column_id, title, completed, completed_by, subtasks_json, created_at, updated_at FROM checklist_items WHERE id = ? AND list_id = ?",
+            "SELECT id, list_id, column_id, title, completed, completed_by, notes, subtasks_json, created_at, updated_at FROM checklist_items WHERE id = ? AND list_id = ?",
             [itemId, listId]
         );
         const current = rows[0];
         if (!current) return res.status(404).json({ error: 'Item not found' });
         const nextTitle = title !== undefined ? title : current.title;
+        const nextNotes = notes !== undefined ? notes : (current.notes || '');
         let nextSubtasks = subtasks !== undefined ? subtasks : parseChecklistSubtasks(current.subtasks_json);
         let nextCompleted = completed !== undefined ? (completed ? 1 : 0) : current.completed;
         let nextCompletedBy = completed !== undefined
@@ -763,8 +784,8 @@ app.patch('/api/checklists/:id/items/:itemId', authenticate, async (req, res) =>
             }
         }
         await dbRun(
-            "UPDATE checklist_items SET title = ?, completed = ?, completed_by = ?, column_id = ?, subtasks_json = ?, updated_at = ? WHERE id = ? AND list_id = ?",
-            [nextTitle, nextCompleted, nextCompletedBy, nextColumnId, JSON.stringify(nextSubtasks), now, itemId, listId]
+            "UPDATE checklist_items SET title = ?, completed = ?, completed_by = ?, column_id = ?, notes = ?, subtasks_json = ?, updated_at = ? WHERE id = ? AND list_id = ?",
+            [nextTitle, nextCompleted, nextCompletedBy, nextColumnId, nextNotes, JSON.stringify(nextSubtasks), now, itemId, listId]
         );
         res.json({
             success: true,
@@ -775,6 +796,7 @@ app.patch('/api/checklists/:id/items/:itemId', authenticate, async (req, res) =>
                 title: nextTitle,
                 completed: !!nextCompleted,
                 completedBy: nextCompletedBy || '',
+                notes: nextNotes,
                 subtasks: nextSubtasks,
                 createdAt: current.created_at,
                 updatedAt: now

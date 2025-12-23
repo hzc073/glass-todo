@@ -123,6 +123,7 @@ db.serialize(() => {
         completed INTEGER NOT NULL DEFAULT 0,
         completed_by TEXT,
         subtasks_json TEXT,
+        notes TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         FOREIGN KEY(list_id) REFERENCES checklists(id) ON DELETE CASCADE
@@ -189,6 +190,10 @@ db.serialize(() => {
         if (!rows.some(r => r.name === 'subtasks_json')) {
             console.log(">> DB Migration: Adding checklist_items.subtasks_json column...");
             db.run("ALTER TABLE checklist_items ADD COLUMN subtasks_json TEXT");
+        }
+        if (!rows.some(r => r.name === 'notes')) {
+            console.log(">> DB Migration: Adding checklist_items.notes column...");
+            db.run("ALTER TABLE checklist_items ADD COLUMN notes TEXT");
         }
     });
 
