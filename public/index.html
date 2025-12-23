@@ -61,24 +61,85 @@
         </div>
     </div>
 
+    <!-- 清单共享 Modal -->
+    <div id="checklist-share-modal">
+        <div class="modal-box" style="max-width:420px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">清单共享</h3>
+                <button class="btn-text" onclick="app.closeChecklistShareModal()">✕</button>
+            </div>
+            <div style="margin-bottom:12px; color:#666;">清单：<span id="checklist-share-name" style="font-weight:700; color:#222;">--</span></div>
+            <div id="checklist-share-form" class="form-group" style="margin-bottom:12px;">
+                <label class="form-label">添加用户</label>
+                <div class="share-form">
+                    <input type="text" id="checklist-share-user" class="form-input share-input" placeholder="输入用户名">
+                    <button class="btn btn-sm share-action" type="button" onclick="app.addChecklistShare()">共享</button>
+                </div>
+            </div>
+            <div id="checklist-share-perms" class="form-group" style="margin-bottom:12px; display:flex; gap:12px;">
+                <label><input type="checkbox" id="share-can-edit" checked> 可编辑</label>
+            </div>
+            <div id="checklist-share-list" style="max-height:160px; overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <!-- 清单事项 Modal -->
+    <div id="checklist-item-modal" style="position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.4); backdrop-filter:blur(5px); display:none; align-items:center; justify-content:center;">
+        <div class="modal-box" style="max-width:480px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">清单事项</h3>
+                <button class="btn-text" onclick="app.closeChecklistItemModal()">✕</button>
+            </div>
+            <div class="form-group">
+                <label class="form-label">事项名称</label>
+                <input type="text" id="checklist-item-title" class="form-input" placeholder="请输入事项名称">
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label">子任务</label>
+                <div id="checklist-subtask-container"></div>
+                <div style="color:var(--primary); cursor:pointer; font-size:0.85rem; margin-top:6px;" onclick="app.addChecklistSubtaskInput()">+ 添加子任务</div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button class="btn btn-secondary" onclick="app.closeChecklistItemModal()">取消</button>
+                <button class="btn" onclick="app.saveChecklistItemModal()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 清单栏目删除 Modal -->
+    <div id="checklist-column-delete-modal" onclick="if(event.target===this) app.cancelChecklistColumnDelete()">
+        <div class="modal-box" style="max-width:420px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">删除栏目</h3>
+                <button class="btn-text" onclick="app.cancelChecklistColumnDelete()">×</button>
+            </div>
+            <div style="margin-bottom:12px; color:#666;">栏目：<span id="checklist-column-delete-name" style="font-weight:700; color:#222;">--</span></div>
+            <div style="font-size:0.85rem; color:#777; line-height:1.5;">请选择处理栏目内待办事项的方式。</div>
+            <div class="column-delete-actions">
+                <button class="btn btn-secondary" onclick="app.confirmChecklistColumnDelete('move')">移入待办箱</button>
+                <button class="btn btn-danger" onclick="app.confirmChecklistColumnDelete('delete')">删除栏目内事项</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast-container"></div>
 
     <!-- 4. 侧边栏 (Desktop) -->
     <nav id="sidebar">
-        <h2 style="color:white; margin-bottom:20px; padding:0 10px;">Glass Todo</h2>
+        <div class="sidebar-header">
+            <h2 class="sidebar-title">Glass Todo</h2>
+            <button class="sidebar-toggle" type="button" onclick="app.toggleSidebar()" title="收缩导航">⟨⟩</button>
+        </div>
         <div class="nav-section">视图</div>
-        <div class="nav-item active" data-view="tasks" onclick="app.switchView('tasks')"><span>📝</span> 任务列表</div>
-        <div class="nav-item" data-view="calendar" onclick="app.switchView('calendar')"><span>📅</span> 日历视图</div>
-        <div class="nav-item" data-view="matrix" onclick="app.switchView('matrix')"><span>💠</span> 四象限</div>
-        <div class="nav-item" data-view="pomodoro" onclick="app.switchView('pomodoro')"><span>🍅</span> 番茄钟</div>
-        
-        <div class="nav-section">标签筛选</div>
-        <div id="tag-filter-list"></div>
+        <div class="nav-item active" data-view="tasks" onclick="app.switchView('tasks')"><span class="nav-icon">📝</span><span class="nav-label">任务列表</span></div>
+        <div class="nav-item" data-view="calendar" onclick="app.switchView('calendar')"><span class="nav-icon">📅</span><span class="nav-label">日历视图</span></div>
+        <div class="nav-item" data-view="matrix" onclick="app.switchView('matrix')"><span class="nav-icon">💠</span><span class="nav-label">四象限</span></div>
+        <div class="nav-item" data-view="pomodoro" onclick="app.switchView('pomodoro')"><span class="nav-icon">🍅</span><span class="nav-label">番茄钟</span></div>
         
         <div style="flex:1"></div>
-        <div class="nav-item" data-view="stats" onclick="app.switchView('stats')"><span>📊</span> 数据统计</div>
-        <div class="nav-item" data-view="settings" onclick="app.switchView('settings')"><span>⚙️</span> 设置</div>
-        <div class="nav-item" data-view="recycle" onclick="app.switchView('recycle')"><span>🗑️</span> 回收站</div>
+        <div class="nav-item" data-view="stats" onclick="app.switchView('stats')"><span class="nav-icon">📊</span><span class="nav-label">数据统计</span></div>
+        <div class="nav-item" data-view="settings" onclick="app.switchView('settings')"><span class="nav-icon">⚙️</span><span class="nav-label">设置</span></div>
+        <div class="nav-item" data-view="recycle" onclick="app.switchView('recycle')"><span class="nav-icon">🗑️</span><span class="nav-label">回收站</span></div>
     </nav>
 
     <!-- 5. 底部 Tab (Mobile) -->
@@ -95,9 +156,11 @@
     <!-- 6. 主区域 -->
     <main id="main">
         <div class="toolbar">
-            <div class="search-bar">
-                <span>🔍</span>
-                <input type="text" class="search-input" placeholder="搜索任务..." oninput="app.handleSearch(this.value)">
+            <div class="toolbar-search">
+                <div class="search-bar">
+                    <span>🔍</span>
+                    <input type="text" class="search-input" placeholder="搜索任务..." oninput="app.handleSearch(this.value)">
+                </div>
             </div>
             
             <!-- 日历视图切换器 (仅在 Calendar 视图显示) -->
@@ -122,34 +185,87 @@
         </div>
 
         <!-- 视图: 列表 -->
-        <div id="view-tasks" class="view-container active">
-            <div class="task-board">
-                <section class="task-column" id="todo-column">
-                    <div class="task-column-header">
-                        <h4>待办事项</h4>
-                        <span class="task-count" id="todo-count"></span>
+    <div id="view-tasks" class="view-container active">
+            <div class="tasklist-layout">
+                <aside class="tasklist-nav">
+                    <div class="tasklist-section">
+                        <button class="tasklist-item active" data-panel="today" type="button" onclick="app.setTaskPanel('today')" ondragover="app.allowNavDrop(event)" ondragleave="app.leaveNavDrop(event)" ondrop="app.dropOnTaskNav(event, 'today')">今天</button>
+                        <button class="tasklist-item" data-panel="tomorrow" type="button" onclick="app.setTaskPanel('tomorrow')" ondragover="app.allowNavDrop(event)" ondragleave="app.leaveNavDrop(event)" ondrop="app.dropOnTaskNav(event, 'tomorrow')">明天</button>
+                        <button class="tasklist-item" data-panel="next7" type="button" onclick="app.setTaskPanel('next7')">最近七天</button>
+                        <button class="tasklist-item" data-panel="inbox" type="button" onclick="app.setTaskPanel('inbox')" ondragover="app.allowNavDrop(event)" ondragleave="app.leaveNavDrop(event)" ondrop="app.dropOnTaskNav(event, 'inbox')">待办箱</button>
                     </div>
-                    <div id="list-todo" class="task-section" ondragover="app.allowDrop(event)" ondragleave="app.leaveDrop(event)" ondrop="app.dropOnTaskList(event, 'todo')"></div>
-                </section>
-                <section class="task-column" id="inbox-column">
-                    <div class="task-column-header">
-                        <h4>待办箱</h4>
-                        <span class="task-count" id="inbox-count"></span>
+                    <div class="tasklist-section">
+                        <div class="tasklist-section-header">
+                            <button class="tasklist-section-toggle" type="button" data-section="checklists" onclick="app.toggleTasklistSection('checklists')">
+                                <span>清单</span>
+                                <span class="tasklist-section-caret">▾</span>
+                            </button>
+                            <button class="btn-icon btn-ghost" type="button" title="新建清单" onclick="app.promptCreateChecklist()">+</button>
+                        </div>
+                        <div id="tasklist-checklists" class="tasklist-list tasklist-section-body" data-section="checklists"></div>
                     </div>
-                    <div id="list-inbox-desktop" class="task-section" ondragover="app.allowDrop(event)" ondragleave="app.leaveDrop(event)" ondrop="app.dropOnTaskList(event, 'inbox')"></div>
-                </section>
-                <section class="task-column" id="done-column">
-                    <div class="task-column-header">
-                        <h4>已完成</h4>
-                        <span class="task-count" id="done-count"></span>
+                    <div class="tasklist-section">
+                        <button class="tasklist-section-toggle" type="button" data-section="tags" onclick="app.toggleTasklistSection('tags')">
+                            <span>标签</span>
+                            <span class="tasklist-section-caret">▾</span>
+                        </button>
+                        <div id="tag-filter-list" class="tasklist-tag-list tasklist-section-body" data-section="tags"></div>
                     </div>
-                    <div id="list-done" class="task-section" ondragover="app.allowDrop(event)" ondragleave="app.leaveDrop(event)" ondrop="app.dropOnTaskList(event, 'done')"></div>
+                    <div class="tasklist-section">
+                        <div class="tasklist-section-header">
+                            <button class="tasklist-section-toggle" type="button" data-section="filters" onclick="app.toggleTasklistSection('filters')">
+                                <span>过滤</span>
+                                <span class="tasklist-section-caret">▾</span>
+                            </button>
+                            <button id="task-filter-clear" class="btn-icon btn-ghost" type="button" title="清除过滤" onclick="app.clearTaskFilters()">×</button>
+                        </div>
+                        <div class="tasklist-filter-panel tasklist-section-body" data-section="filters">
+                            <div class="task-filter-row">
+                                <label class="task-filter-label" for="task-filter-status">状态</label>
+                                <select id="task-filter-status" class="task-filter-select" onchange="app.setFilterStatus(this.value)">
+                                    <option value="all">全部</option>
+                                    <option value="todo">未完成</option>
+                                    <option value="completed">已完成</option>
+                                </select>
+                            </div>
+                            <div class="task-filter-row">
+                                <label class="task-filter-label" for="task-filter-quadrant">优先级</label>
+                                <select id="task-filter-quadrant" class="task-filter-select" onchange="app.setFilterQuadrant(this.value)">
+                                    <option value="all">全部</option>
+                                    <option value="none">未设置</option>
+                                    <option value="q1">P1 重要紧急</option>
+                                    <option value="q2">P2 重要不急</option>
+                                    <option value="q3">P3 紧急不重</option>
+                                    <option value="q4">P4 不重不急</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+                <section class="tasklist-content">
+                    <div class="tasklist-content-header">
+                        <div class="tasklist-title-group">
+                            <div id="tasklist-title" class="tasklist-title">今天</div>
+                            <div id="tasklist-subtitle" class="tasklist-subtitle"></div>
+                        </div>
+                        <div id="tasklist-actions"></div>
+                    </div>
+                    <div id="tasklist-items" class="tasklist-items"></div>
                 </section>
-            </div>
-            <div class="task-swipe-dots" aria-hidden="true">
-                <span class="task-swipe-dot active"></span>
-                <span class="task-swipe-dot"></span>
-                <span class="task-swipe-dot"></span>
+                <aside id="task-detail-panel" class="task-detail">
+                    <div class="task-detail-header">
+                        <div class="task-detail-title">任务详情</div>
+                        <button class="btn-icon btn-ghost" type="button" onclick="app.closeTaskDetail()">✕</button>
+                    </div>
+                    <div class="task-detail-body">
+                        <div id="task-detail-name" class="task-detail-name">--</div>
+                        <div id="task-detail-time" class="task-detail-time">--</div>
+                        <div class="task-detail-notes">
+                            <textarea id="task-detail-notes" class="form-input task-detail-textarea" placeholder="添加备注..." oninput="app.updateTaskNotes(this.value)"></textarea>
+                        </div>
+                    </div>
+                </aside>
+                </div>
             </div>
 
         </div>
@@ -343,6 +459,45 @@
             <div id="recycle-list"></div>
         </div>
 
+        <!-- 视图: 清单 -->
+        <div id="view-checklists" class="view-container">
+            <div class="checklist-layout">
+                <div class="checklist-nav">
+                    <div class="checklist-nav-header">
+                        <div>
+                            <div class="checklist-nav-title">清单</div>
+                            <div class="checklist-nav-subtitle">独立于任务的数据</div>
+                        </div>
+                        <button class="btn-icon" type="button" onclick="app.promptCreateChecklist()" title="新建清单">+</button>
+                    </div>
+                    <div id="checklist-list" class="checklist-nav-list"></div>
+                </div>
+                <div class="checklist-content">
+                    <div class="checklist-content-header">
+                        <div>
+                            <div id="checklist-active-name" class="checklist-content-title">请选择清单</div>
+                            <div class="checklist-content-subtitle">左侧选择清单，右侧编辑条目</div>
+                        </div>
+                        <button id="checklist-add-btn" class="btn-icon" type="button" title="新建栏目" onclick="app.promptCreateChecklistColumn()">+</button>
+                    </div>
+                    <div id="checklist-items" class="checklist-items"></div>
+                </div>
+                <aside id="checklist-detail-panel" class="task-detail checklist-detail">
+                    <div class="task-detail-header">
+                        <div class="task-detail-title">清单事项</div>
+                        <button class="btn-icon btn-ghost" type="button" onclick="app.closeChecklistDetail()">×</button>
+                    </div>
+                    <div class="task-detail-body">
+                        <div id="checklist-detail-name" class="task-detail-name">--</div>
+                        <div id="checklist-detail-meta" class="task-detail-time">--</div>
+                        <div class="task-detail-notes">
+                            <textarea id="checklist-detail-notes" class="form-input task-detail-textarea" placeholder="添加备注..." oninput="app.updateChecklistNotes(this.value)"></textarea>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </div>
+
         <!-- 视图: 设置 -->
         <div id="view-settings" class="view-container">
             <div class="settings-layout">
@@ -407,6 +562,11 @@
                                 <option value="month">月</option>
                             </select>
                         </div>
+                        <div class="form-group" style="margin-top:12px;">
+                            <label class="form-label">日/周时间轴默认滚动到</label>
+                            <input type="time" id="calendar-timeline-start" class="form-input" step="900">
+                            <div style="font-size:0.75rem; color:#888; margin-top:6px;">仅调整初始滚动位置，时间轴仍显示24小时。</div>
+                        </div>
                     </section>
 
                     <section id="settings-notifications" class="stats-card settings-section">
@@ -420,7 +580,7 @@
                         <h3>数据管理</h3>
                         <p style="font-size:0.85rem; color:#666; line-height:1.6; margin-bottom:12px;">
                             导出报告：生成工作日志或周志，便于汇报与复盘。<br>
-                            导出 JSON：只包含你填写的任务内容（如标题、日期、标签、子任务），不包含附件文件与系统设置。<br>
+                            导出 JSON：包含任务、清单、番茄钟设置/状态/历史，不包含附件文件与系统设置。<br>
                             全量备份：请停止服务后备份根目录的 `database.sqlite` 与 `storage/` 文件夹，并同时导出 JSON 作为数据清单。
                         </p>
                         <button class="btn btn-secondary" onclick="app.openExportModal()" style="width:100%; margin-bottom:10px;">📤 导出报告</button>
@@ -434,19 +594,22 @@
                 </div>
             </div>
         </div>
+        <footer id="app-footer" class="app-footer">
+            <a href="https://github.com/hzc073/glass-todo" target="_blank" rel="noopener noreferrer">Created by hzc073/夜莺</a>
+        </footer>
     </main>
 
     <!-- 7. 新建任务 Modal (增强版) -->
     <div id="modal-overlay">
-        <div class="modal-box">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <div id="task-modal-box" class="modal-box task-modal">
+            <div class="task-modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
                 <h3 id="modal-title">📝 任务详情</h3>
-                <button class="btn-text" onclick="app.closeModal()">✕</button>
+                <button class="btn-text" type="button" onclick="app.closeModal()">✕</button>
             </div>
             
             <div class="form-group">
                 <label class="form-label">任务名称</label>
-                <input type="text" id="task-title" class="form-input" placeholder="输入任务名称...">
+                <input type="text" id="task-title" class="form-input" placeholder="输入任务名称按回车键保存">
             </div>
 
             <div style="display:flex; gap:10px;">
@@ -464,6 +627,7 @@
                 </div>
             </div>
 
+            <div id="task-modal-details" class="task-modal-details">
             <div class="form-group" style="display:flex; align-items:center; gap:10px;">
                 <input type="checkbox" id="task-remind" style="width:auto; height:auto;">
                 <label for="task-remind" class="form-label" style="margin:0;">开始时间提醒</label>
@@ -511,12 +675,16 @@
 
             <div class="form-group">
                 <label class="form-label">优先级 / 象限</label>
-                <select id="task-quadrant" class="form-input">
-                    <option value="q1">🔴 重要紧急 (P1)</option>
-                    <option value="q2" selected>🔵 重要不急 (P2)</option>
-                    <option value="q3">🟠 紧急不重 (P3)</option>
-                    <option value="q4">🟢 不重不急 (P4)</option>
-                </select>
+                <div class="task-quadrant-row" style="display:flex; align-items:center; gap:8px;">
+                    <select id="task-quadrant" class="form-input" style="margin:0; flex:1;">
+                        <option value="">未设置</option>
+                        <option value="q1">🔴 重要紧急 (P1)</option>
+                        <option value="q2">🔵 重要不急 (P2)</option>
+                        <option value="q3">🟠 紧急不重 (P3)</option>
+                        <option value="q4">🟢 不重不急 (P4)</option>
+                    </select>
+                    <button class="btn-text" type="button" onclick="app.clearTaskQuadrant()">清除</button>
+                </div>
             </div>
 
             <div class="form-group">
@@ -541,11 +709,11 @@
                 </div>
                 <div id="task-attachments-list" class="attachment-list"></div>
             </div>
+            </div>
 
-            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
-                <button class="btn btn-danger" style="margin-right:auto;" onclick="app.deleteCurrentTask()">删除</button>
-                <button class="btn btn-secondary" onclick="app.closeModal()">取消</button>
-                <button class="btn" onclick="app.saveTask()">保存任务</button>
+            <div class="task-modal-footer" style="display:flex; justify-content:center; gap:12px; margin-top:20px;">
+                <button id="task-modal-save" class="btn task-modal-save" type="button" onclick="app.saveTask()">保存</button>
+                <button id="task-modal-toggle" class="btn-text" type="button" onclick="app.toggleTaskModalDetails()">展开</button>
             </div>
         </div>
     </div>
