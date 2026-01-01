@@ -1,6 +1,7 @@
 ﻿# Glass Todo 
 > 一个运行在你自己电脑里的 Todo / 日程工具  
 > 支持windows，docker,cloudflare部署。
+[新版 Todo（Glass Todo V2）](https://github.com/hzc073/glass-todo-V2)
 
 ---
 
